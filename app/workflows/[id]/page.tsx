@@ -5,11 +5,10 @@ import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
+import { DynamicFormRenderer } from "@/components/dynamic-form-renderer"
 import {
   storageService,
   type WorkflowInstance,
@@ -17,22 +16,22 @@ import {
   type Entity,
   type Personnel,
 } from "@/lib/storage"
-import { CheckCircle, Clock, AlertCircle, Building2, User, Calendar } from "lucide-react"
+import { FileText, Clock, CheckCircle, AlertCircle, User, Calendar, ArrowLeft, Download } from "lucide-react"
 import Link from "next/link"
 
-interface WorkflowDetailPageProps {
+interface WorkflowPageProps {
   params: { id: string }
 }
 
-export default function WorkflowDetailPage({ params }: WorkflowDetailPageProps) {
+export default function WorkflowPage({ params }: WorkflowPageProps) {
   const { user } = useAuth()
   const router = useRouter()
-  const [instance, setInstance] = useState<WorkflowInstance | null>(null)
+  const [workflow, setWorkflow] = useState<WorkflowInstance | null>(null)
   const [template, setTemplate] = useState<WorkflowTemplate | null>(null)
+  const [owner, setOwner] = useState<Personnel | null>(null)
   const [entities, setEntities] = useState<Record<string, Entity>>({})
-  const [personnel, setPersonnel] = useState<Record<string, Personnel>>({})
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>({})
-  const [isApproving, setIsApproving] = useState(false)
+  const [formValues, setFormValues] = useState<Record<string, any>>({})
+  const [approving, setApproving] = useState(false)
 
   useEffect(() => {
     if (!user) {
@@ -40,131 +39,167 @@ export default function WorkflowDetailPage({ params }: WorkflowDetailPageProps) 
       return
     }
 
-    loadWorkflowData()
+    loadWorkflow()
   }, [user, router, params.id])
 
-  const loadWorkflowData = () => {
+  const loadWorkflow = () => {
     const workflowInstance = storageService.getWorkflowInstanceById(params.id)
     if (!workflowInstance) {
       router.push("/dashboard")
       return
     }
 
-    setInstance(workflowInstance)
+    setWorkflow(workflowInstance)
 
+    // Load template
     const workflowTemplate = storageService.getWorkflowTemplateById(workflowInstance.templateId)
     setTemplate(workflowTemplate)
 
-    // Load entities and personnel
+    // Load owner
+    const workflowOwner = storageService.getPersonnelById(workflowInstance.ownerId)
+    setOwner(workflowOwner)
+
+    // Load entities
     const allEntities = storageService.getEntities()
-    const allPersonnel = storageService.getPersonnel()
-
     const entityMap: Record<string, Entity> = {}
-    const personnelMap: Record<string, Personnel> = {}
-
-    allEntities.forEach((entity) => (entityMap[entity.id] = entity))
-    allPersonnel.forEach((person) => (personnelMap[person.id] = person))
-
+    allEntities.forEach((entity) => {
+      entityMap[entity.id] = entity
+    })
     setEntities(entityMap)
-    setPersonnel(personnelMap)
 
-    // Initialize field values for current milestone
-    if (workflowTemplate && workflowInstance.status === "active") {
+    // Load current milestone form values
+    if (workflowTemplate) {
       const currentMilestone = workflowTemplate.milestones[workflowInstance.currentMilestoneIndex]
-      if (currentMilestone) {
-        const currentMilestoneData = workflowInstance.milestoneData.find((md) => md.milestoneId === currentMilestone.id)
-        if (currentMilestoneData) {
-          setFieldValues(currentMilestoneData.fieldValues)
-        }
+      const currentMilestoneData = workflowInstance.milestoneData.find((md) => md.milestoneId === currentMilestone?.id)
+      if (currentMilestoneData) {
+        setFormValues(currentMilestoneData.fieldValues)
       }
     }
   }
 
-  const canApprove = () => {
-    if (!user || !instance || !template || instance.status !== "active") return false
+  const handleFormChange = (fieldId: string, value: any) => {
+    setFormValues((prev) => ({
+      ...prev,
+      [fieldId]: value,
+    }))
+  }
 
-    const currentMilestone = template.milestones[instance.currentMilestoneIndex]
+  const canApprove = () => {
+    if (!user || !workflow || !template) return false
+
+    const currentMilestone = template.milestones[workflow.currentMilestoneIndex]
     if (!currentMilestone) return false
 
+    // Check if user's entity matches the approving entity
     return currentMilestone.approvingEntityId === user.entityId
   }
 
   const approveMilestone = async () => {
-    if (!user || !instance || !template || !canApprove()) return
+    if (!user || !workflow || !template || !canApprove()) return
 
-    setIsApproving(true)
+    setApproving(true)
+    try {
+      const currentMilestone = template.milestones[workflow.currentMilestoneIndex]
 
-    const currentMilestone = template.milestones[instance.currentMilestoneIndex]
-    const updatedMilestoneData = instance.milestoneData.map((md) => {
-      if (md.milestoneId === currentMilestone.id) {
-        return {
-          ...md,
-          status: "approved" as const,
-          approverId: user.id,
-          approvedAt: new Date().toISOString(),
-          fieldValues: fieldValues,
+      // Update milestone data
+      const updatedMilestoneData = workflow.milestoneData.map((md) => {
+        if (md.milestoneId === currentMilestone.id) {
+          return {
+            ...md,
+            status: "approved" as const,
+            approverId: user.id,
+            approvedAt: new Date().toISOString(),
+            fieldValues: formValues,
+          }
         }
-      }
-      return md
-    })
-
-    const isLastMilestone = instance.currentMilestoneIndex === template.milestones.length - 1
-    const nextMilestoneIndex = instance.currentMilestoneIndex + 1
-
-    // Update next milestone status if not last
-    if (!isLastMilestone) {
-      const nextMilestone = template.milestones[nextMilestoneIndex]
-      updatedMilestoneData.forEach((md) => {
-        if (md.milestoneId === nextMilestone.id) {
-          md.status = "active"
-        }
+        return md
       })
-    }
 
-    const updatedInstance: Partial<WorkflowInstance> = {
-      milestoneData: updatedMilestoneData,
-      currentMilestoneIndex: isLastMilestone ? instance.currentMilestoneIndex : nextMilestoneIndex,
-      status: isLastMilestone ? "completed" : "active",
-      completedAt: isLastMilestone ? new Date().toISOString() : undefined,
-    }
+      // Check if this is the last milestone
+      const isLastMilestone = workflow.currentMilestoneIndex === template.milestones.length - 1
+      const nextMilestoneIndex = workflow.currentMilestoneIndex + 1
 
-    storageService.updateWorkflowInstance(instance.id, updatedInstance)
-    setIsApproving(false)
-    loadWorkflowData()
+      // Activate next milestone if not last
+      if (!isLastMilestone) {
+        const nextMilestone = template.milestones[nextMilestoneIndex]
+        updatedMilestoneData.forEach((md) => {
+          if (md.milestoneId === nextMilestone.id) {
+            md.status = "active"
+          }
+        })
+      }
+
+      // Update workflow
+      storageService.updateWorkflowInstance(workflow.id, {
+        milestoneData: updatedMilestoneData,
+        currentMilestoneIndex: isLastMilestone ? workflow.currentMilestoneIndex : nextMilestoneIndex,
+        status: isLastMilestone ? "completed" : "active",
+        completedAt: isLastMilestone ? new Date().toISOString() : undefined,
+      })
+
+      loadWorkflow()
+    } catch (error) {
+      alert("Failed to approve milestone")
+    } finally {
+      setApproving(false)
+    }
   }
 
-  const updateFieldValue = (fieldId: string, value: string) => {
-    setFieldValues((prev) => ({ ...prev, [fieldId]: value }))
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <CheckCircle className="h-5 w-5 text-green-600" />
+      case "active":
+        return <Clock className="h-5 w-5 text-blue-600" />
+      default:
+        return <AlertCircle className="h-5 w-5 text-gray-400" />
+    }
   }
 
-  if (!user || !instance || !template) return null
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "approved":
+        return "bg-green-100 text-green-800"
+      case "active":
+        return "bg-blue-100 text-blue-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
 
-  const owner = personnel[instance.ownerId]
-  const currentMilestone = instance.status === "active" ? template.milestones[instance.currentMilestoneIndex] : null
+  if (!user || !workflow || !template) return null
+
+  const progress =
+    (workflow.milestoneData.filter((md) => md.status === "approved").length / template.milestones.length) * 100
+  const currentMilestone = template.milestones[workflow.currentMilestoneIndex]
+  const currentMilestoneData = workflow.milestoneData.find((md) => md.milestoneId === currentMilestone?.id)
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
       <header className="bg-white dark:bg-gray-800 shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
               <Link href="/dashboard" className="mr-4">
-                <Button variant="outline">← Back</Button>
+                <Button variant="outline">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back
+                </Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{instance.title}</h1>
-                <p className="text-sm text-gray-500">ID: {instance.id}</p>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{workflow.title}</h1>
+                <p className="text-sm text-gray-500">ID: {workflow.id}</p>
               </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <Badge
-                variant={instance.status === "completed" ? "default" : "secondary"}
-                className={
-                  instance.status === "completed" ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
-                }
-              >
-                {instance.status}
-              </Badge>
+            <div className="flex items-center gap-4">
+              <Badge className={getStatusColor(workflow.status)}>{workflow.status}</Badge>
+              {workflow.status === "completed" && (
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export PDF
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -172,131 +207,139 @@ export default function WorkflowDetailPage({ params }: WorkflowDetailPageProps) 
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Workflow Progress */}
-          <div className="lg:col-span-2">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Progress */}
             <Card>
               <CardHeader>
-                <CardTitle>Workflow Progress</CardTitle>
-                <CardDescription>Track the status of each milestone</CardDescription>
+                <CardTitle className="flex items-center">
+                  <FileText className="h-5 w-5 mr-2" />
+                  Workflow Progress
+                </CardTitle>
+                <CardDescription>
+                  {workflow.milestoneData.filter((md) => md.status === "approved").length} of{" "}
+                  {template.milestones.length} milestones completed
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-6">
+                <Progress value={progress} className="mb-4" />
+                <div className="text-sm text-gray-600">{Math.round(progress)}% Complete</div>
+              </CardContent>
+            </Card>
+
+            {/* Current Milestone */}
+            {workflow.status === "active" && currentMilestone && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Clock className="h-5 w-5 mr-2" />
+                    Current Step: {currentMilestone.title}
+                  </CardTitle>
+                  <CardDescription>
+                    Waiting for approval from {entities[currentMilestone.approvingEntityId]?.name}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Requirements */}
+                  {currentMilestone.requirements.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-2">Requirements</h4>
+                      <ul className="space-y-1">
+                        {currentMilestone.requirements.map((req, index) => (
+                          <li key={index} className="text-sm text-gray-600 flex items-start gap-2">
+                            <span className="text-gray-400">{index + 1}.</span>
+                            <span>{req}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Form Fields */}
+                  {currentMilestone.placeholderFields.length > 0 && (
+                    <div>
+                      <h4 className="font-medium mb-4">Information Required</h4>
+                      <DynamicFormRenderer
+                        fields={currentMilestone.placeholderFields}
+                        values={formValues}
+                        onChange={handleFormChange}
+                        disabled={!canApprove()}
+                      />
+                    </div>
+                  )}
+
+                  {/* Approval Button */}
+                  {canApprove() && (
+                    <div className="pt-4 border-t">
+                      <Button onClick={approveMilestone} disabled={approving} className="w-full" size="lg">
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        {approving ? "Approving..." : "Approve & Continue"}
+                      </Button>
+                    </div>
+                  )}
+
+                  {!canApprove() && currentMilestoneData?.status === "active" && (
+                    <div className="pt-4 border-t">
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2 text-yellow-800">
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="text-sm font-medium">
+                            Waiting for approval from {entities[currentMilestone.approvingEntityId]?.name}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Milestone History */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Milestone History</CardTitle>
+                <CardDescription>Complete timeline of this workflow</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
                   {template.milestones.map((milestone, index) => {
-                    const milestoneData = instance.milestoneData.find((md) => md.milestoneId === milestone.id)
-                    const entity = entities[milestone.approvingEntityId]
-                    const approver = milestoneData?.approverId ? personnel[milestoneData.approverId] : null
-
-                    const getStatusIcon = () => {
-                      switch (milestoneData?.status) {
-                        case "approved":
-                          return <CheckCircle className="h-6 w-6 text-green-600" />
-                        case "active":
-                          return <Clock className="h-6 w-6 text-blue-600" />
-                        default:
-                          return <AlertCircle className="h-6 w-6 text-gray-400" />
-                      }
-                    }
-
-                    const getStatusColor = () => {
-                      switch (milestoneData?.status) {
-                        case "approved":
-                          return "border-green-200 bg-green-50"
-                        case "active":
-                          return "border-blue-200 bg-blue-50"
-                        default:
-                          return "border-gray-200 bg-gray-50"
-                      }
-                    }
+                    const milestoneData = workflow.milestoneData.find((md) => md.milestoneId === milestone.id)
+                    const approver = milestoneData?.approverId
+                      ? storageService.getPersonnelById(milestoneData.approverId)
+                      : null
+                    const approvingEntity = entities[milestone.approvingEntityId]
 
                     return (
-                      <div key={milestone.id} className={`border rounded-lg p-4 ${getStatusColor()}`}>
-                        <div className="flex items-start space-x-4">
-                          <div className="flex-shrink-0">{getStatusIcon()}</div>
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between">
-                              <h3 className="font-semibold">{milestone.title}</h3>
-                              <Badge variant="outline">Step {index + 1}</Badge>
-                            </div>
-                            <div className="flex items-center text-sm text-gray-600 mt-1">
-                              <Building2 className="h-4 w-4 mr-1" />
-                              {entity?.name || "Unknown Entity"}
-                            </div>
-
-                            {milestone.requirements.length > 0 && (
-                              <div className="mt-3">
-                                <p className="text-sm font-medium text-gray-700 mb-1">Requirements:</p>
-                                <ul className="text-sm text-gray-600 list-disc list-inside space-y-1">
-                                  {milestone.requirements.map((req, reqIndex) => (
-                                    <li key={reqIndex}>{req}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            {milestoneData?.status === "approved" && approver && (
-                              <div className="mt-3 p-3 bg-white rounded border">
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center text-sm text-green-700">
-                                    <User className="h-4 w-4 mr-1" />
-                                    Approved by {approver.name}
-                                  </div>
-                                  <div className="flex items-center text-sm text-gray-500">
-                                    <Calendar className="h-4 w-4 mr-1" />
-                                    {milestoneData.approvedAt
-                                      ? new Date(milestoneData.approvedAt).toLocaleDateString()
-                                      : ""}
-                                  </div>
-                                </div>
-                                {Object.keys(milestoneData.fieldValues).length > 0 && (
-                                  <div className="mt-2 space-y-1">
-                                    {milestone.placeholderFields.map((field) => {
-                                      const value = milestoneData.fieldValues[field.id]
-                                      if (!value) return null
-                                      return (
-                                        <div key={field.id} className="text-sm">
-                                          <span className="font-medium">{field.label}:</span> {value}
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {milestoneData?.status === "active" && canApprove() && (
-                              <div className="mt-4 p-4 bg-white rounded border">
-                                <h4 className="font-medium mb-3">Complete This Milestone</h4>
-                                {milestone.placeholderFields.length > 0 && (
-                                  <div className="space-y-3 mb-4">
-                                    {milestone.placeholderFields.map((field) => (
-                                      <div key={field.id}>
-                                        <Label htmlFor={field.id}>{field.label}</Label>
-                                        {field.type === "textarea" ? (
-                                          <Textarea
-                                            id={field.id}
-                                            value={fieldValues[field.id] || ""}
-                                            onChange={(e) => updateFieldValue(field.id, e.target.value)}
-                                            required={field.required}
-                                          />
-                                        ) : (
-                                          <Input
-                                            id={field.id}
-                                            type={field.type}
-                                            value={fieldValues[field.id] || ""}
-                                            onChange={(e) => updateFieldValue(field.id, e.target.value)}
-                                            required={field.required}
-                                          />
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                                <Button onClick={approveMilestone} disabled={isApproving} className="w-full">
-                                  {isApproving ? "Approving..." : "Approve & Sign"}
-                                </Button>
-                              </div>
-                            )}
+                      <div key={milestone.id} className="flex items-start gap-4">
+                        <div className="flex-shrink-0 mt-1">{getStatusIcon(milestoneData?.status || "pending")}</div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-medium">{milestone.title}</h4>
+                            <Badge variant="outline" className={getStatusColor(milestoneData?.status || "pending")}>
+                              {milestoneData?.status || "pending"}
+                            </Badge>
                           </div>
+                          <div className="text-sm text-gray-600 mb-2">Approving Entity: {approvingEntity?.name}</div>
+                          {milestoneData?.status === "approved" && (
+                            <div className="text-xs text-gray-500">
+                              Approved by {approver?.name} on {new Date(milestoneData.approvedAt!).toLocaleString()}
+                            </div>
+                          )}
+                          {milestoneData?.fieldValues && Object.keys(milestoneData.fieldValues).length > 0 && (
+                            <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                              <div className="text-xs font-medium text-gray-700 mb-2">Submitted Data:</div>
+                              {Object.entries(milestoneData.fieldValues).map(([fieldId, value]) => {
+                                const field = milestone.placeholderFields.find((f) => f.id === fieldId)
+                                if (!field) return null
+                                return (
+                                  <div key={fieldId} className="text-xs text-gray-600">
+                                    <span className="font-medium">{field.label}:</span>{" "}
+                                    {Array.isArray(value) ? value.join(", ") : String(value)}
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )
@@ -306,64 +349,66 @@ export default function WorkflowDetailPage({ params }: WorkflowDetailPageProps) 
             </Card>
           </div>
 
-          {/* Workflow Info */}
+          {/* Sidebar */}
           <div className="space-y-6">
+            {/* Workflow Info */}
             <Card>
               <CardHeader>
                 <CardTitle>Workflow Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Owner</Label>
-                  <p className="text-sm">{owner?.name || "Unknown"}</p>
-                </div>
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Started</Label>
-                  <p className="text-sm">{new Date(instance.createdAt).toLocaleDateString()}</p>
-                </div>
-                {instance.completedAt && (
+                <div className="flex items-center gap-2">
+                  <User className="h-4 w-4 text-gray-500" />
                   <div>
-                    <Label className="text-sm font-medium text-gray-500">Completed</Label>
-                    <p className="text-sm">{new Date(instance.completedAt).toLocaleDateString()}</p>
-                  </div>
-                )}
-                <div>
-                  <Label className="text-sm font-medium text-gray-500">Progress</Label>
-                  <div className="flex items-center space-x-2">
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${((instance.currentMilestoneIndex + (instance.status === "completed" ? 1 : 0)) / template.milestones.length) * 100}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="text-sm text-gray-500">
-                      {instance.status === "completed"
-                        ? template.milestones.length
-                        : instance.currentMilestoneIndex + 1}{" "}
-                      / {template.milestones.length}
-                    </span>
+                    <div className="text-sm font-medium">Owner</div>
+                    <div className="text-sm text-gray-600">{owner?.name}</div>
                   </div>
                 </div>
+                <Separator />
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  <div>
+                    <div className="text-sm font-medium">Created</div>
+                    <div className="text-sm text-gray-600">{new Date(workflow.createdAt).toLocaleString()}</div>
+                  </div>
+                </div>
+                {workflow.completedAt && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <div>
+                        <div className="text-sm font-medium">Completed</div>
+                        <div className="text-sm text-gray-600">{new Date(workflow.completedAt).toLocaleString()}</div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
-            {currentMilestone && !canApprove() && (
-              <Alert>
-                <Clock className="h-4 w-4" />
-                <AlertDescription>
-                  Waiting for approval from {entities[currentMilestone.approvingEntityId]?.name || "Unknown Entity"}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {instance.status === "completed" && (
-              <Alert>
-                <CheckCircle className="h-4 w-4" />
-                <AlertDescription>This workflow has been completed successfully!</AlertDescription>
-              </Alert>
-            )}
+            {/* Template Info */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Template Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <div className="text-sm font-medium">Template</div>
+                  <div className="text-sm text-gray-600">{template.title}</div>
+                </div>
+                <Separator />
+                <div>
+                  <div className="text-sm font-medium">Description</div>
+                  <div className="text-sm text-gray-600">{template.description}</div>
+                </div>
+                <Separator />
+                <div>
+                  <div className="text-sm font-medium">Total Steps</div>
+                  <div className="text-sm text-gray-600">{template.milestones.length}</div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

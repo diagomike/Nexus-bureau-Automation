@@ -41,8 +41,15 @@ export interface Milestone {
 export interface PlaceholderField {
   id: string
   label: string
-  type: "text" | "textarea" | "number"
+  type: "text" | "textarea" | "number" | "email" | "date" | "select" | "multiselect" | "checkbox" | "radio" | "boolean"
   required: boolean
+  options?: string[] // For select, multiselect, radio
+  placeholder?: string
+  validation?: {
+    min?: number
+    max?: number
+    pattern?: string
+  }
 }
 
 export interface WorkflowInstance {
@@ -126,6 +133,15 @@ class StorageService {
 
   getSubEntities(parentId: string): Entity[] {
     return this.getEntities().filter((e) => e.parentId === parentId)
+  }
+
+  // Add this method to the StorageService class
+  searchEntities(query: string): Entity[] {
+    const entities = this.getEntities()
+    if (!query.trim()) return entities
+
+    const searchTerm = query.toLowerCase()
+    return entities.filter((entity) => entity.name.toLowerCase().includes(searchTerm))
   }
 
   // Personnel operations

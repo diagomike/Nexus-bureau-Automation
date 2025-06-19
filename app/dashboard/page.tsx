@@ -1,17 +1,23 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { storageService, type WorkflowInstance, type WorkflowTemplate, type Entity } from "@/lib/storage"
-import { Building2, FileText, Clock, Plus, Users } from "lucide-react"
+import {
+  storageService,
+  type WorkflowInstance,
+  type WorkflowTemplate,
+  type Entity,
+  type Personnel,
+} from "@/lib/storage"
+import { Building2, FileText, Clock, Plus, Users, Settings } from "lucide-react"
 import Link from "next/link"
+import { AuthService } from "@/lib/auth"
 
 export default function DashboardPage() {
-  const { user, logout } = useAuth()
+  const [user, setUser] = useState<Personnel | null>(null)
   const router = useRouter()
   const [myWorkflows, setMyWorkflows] = useState<WorkflowInstance[]>([])
   const [pendingApprovals, setPendingApprovals] = useState<WorkflowInstance[]>([])
@@ -19,27 +25,35 @@ export default function DashboardPage() {
   const [myEntity, setMyEntity] = useState<Entity | null>(null)
 
   useEffect(() => {
-    if (!user) {
+    const currentUser = AuthService.getCurrentUser()
+    if (!currentUser) {
       router.push("/login")
       return
     }
 
+    setUser(currentUser)
+
     // Load user's entity
-    const entity = storageService.getEntityById(user.entityId)
+    const entity = storageService.getEntityById(currentUser.entityId)
     setMyEntity(entity)
 
     // Load user's workflows
-    const workflows = storageService.getWorkflowInstancesByOwner(user.id)
+    const workflows = storageService.getWorkflowInstancesByOwner(currentUser.id)
     setMyWorkflows(workflows)
 
     // Load pending approvals
-    const approvals = storageService.getPendingApprovals(user.id)
+    const approvals = storageService.getPendingApprovals(currentUser.id)
     setPendingApprovals(approvals)
 
     // Load available templates (for now, show all)
     const templates = storageService.getWorkflowTemplates()
     setAvailableTemplates(templates)
-  }, [user, router])
+  }, [router])
+
+  const handleLogout = () => {
+    AuthService.logout()
+    router.push("/login")
+  }
 
   if (!user) return null
 
@@ -70,7 +84,13 @@ export default function DashboardPage() {
             <div className="flex items-center space-x-4">
               <span className="text-sm text-gray-700 dark:text-gray-300">Welcome, {user.name}</span>
               <Badge variant="outline">{user.role}</Badge>
-              <Button variant="outline" onClick={logout}>
+              <Link href="/settings">
+                <Button variant="outline" size="sm">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Settings
+                </Button>
+              </Link>
+              <Button variant="outline" onClick={handleLogout}>
                 Logout
               </Button>
             </div>
@@ -80,8 +100,8 @@ export default function DashboardPage() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {user.role === "manager" && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          {(user.role === "manager" || user.role === "superadmin") && (
             <>
               <Link href="/templates">
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer">
@@ -94,7 +114,7 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </Link>
-              <Link href="/entities">
+              <Link href="/personnel">
                 <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                   <CardHeader className="flex flex-row items-center space-y-0 pb-2">
                     <Users className="h-4 w-4 text-green-600" />
@@ -105,12 +125,23 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </Link>
+              <Link href="/entities">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                  <CardHeader className="flex flex-row items-center space-y-0 pb-2">
+                    <Building2 className="h-4 w-4 text-purple-600" />
+                    <CardTitle className="ml-2 text-sm font-medium">Manage Entities</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground">Create and manage organizations</p>
+                  </CardContent>
+                </Card>
+              </Link>
             </>
           )}
           <Link href="/workflows/new">
             <Card className="hover:shadow-lg transition-shadow cursor-pointer">
               <CardHeader className="flex flex-row items-center space-y-0 pb-2">
-                <Plus className="h-4 w-4 text-purple-600" />
+                <Plus className="h-4 w-4 text-orange-600" />
                 <CardTitle className="ml-2 text-sm font-medium">Start New Workflow</CardTitle>
               </CardHeader>
               <CardContent>

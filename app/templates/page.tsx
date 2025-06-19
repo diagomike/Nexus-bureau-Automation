@@ -27,6 +27,8 @@ import {
 } from "@/lib/storage"
 import { Plus, FileText, Trash2 } from "lucide-react"
 import Link from "next/link"
+import { RequirementsModal } from "@/components/requirements-modal"
+import { FieldModal } from "@/components/field-modal"
 
 export default function TemplatesPage() {
   const { user } = useAuth()
@@ -39,6 +41,10 @@ export default function TemplatesPage() {
     description: "",
     milestones: [] as Milestone[],
   })
+
+  const [requirementsModalOpen, setRequirementsModalOpen] = useState(false)
+  const [fieldModalOpen, setFieldModalOpen] = useState(false)
+  const [editingMilestoneIndex, setEditingMilestoneIndex] = useState<number | null>(null)
 
   useEffect(() => {
     if (!user || user.role !== "manager") {
@@ -113,27 +119,25 @@ export default function TemplatesPage() {
     }))
   }
 
-  const addRequirement = (milestoneIndex: number) => {
-    const requirement = prompt("Enter requirement:")
-    if (requirement) {
-      updateMilestone(milestoneIndex, {
-        requirements: [...newTemplate.milestones[milestoneIndex].requirements, requirement],
-      })
+  const openRequirementsModal = (milestoneIndex: number) => {
+    setEditingMilestoneIndex(milestoneIndex)
+    setRequirementsModalOpen(true)
+  }
+
+  const saveRequirements = (requirements: string[]) => {
+    if (editingMilestoneIndex !== null) {
+      updateMilestone(editingMilestoneIndex, { requirements })
     }
   }
 
-  const addPlaceholderField = (milestoneIndex: number) => {
-    const label = prompt("Enter field label:")
-    if (label) {
-      const newField: PlaceholderField = {
-        id: Date.now().toString(),
-        label,
-        type: "text",
-        required: true,
-      }
-      updateMilestone(milestoneIndex, {
-        placeholderFields: [...newTemplate.milestones[milestoneIndex].placeholderFields, newField],
-      })
+  const openFieldModal = (milestoneIndex: number) => {
+    setEditingMilestoneIndex(milestoneIndex)
+    setFieldModalOpen(true)
+  }
+
+  const saveFields = (fields: PlaceholderField[]) => {
+    if (editingMilestoneIndex !== null) {
+      updateMilestone(editingMilestoneIndex, { placeholderFields: fields })
     }
   }
 
@@ -239,54 +243,44 @@ export default function TemplatesPage() {
 
                           <div>
                             <div className="flex justify-between items-center mb-2">
-                              <Label>Requirements</Label>
-                              <Button size="sm" variant="outline" onClick={() => addRequirement(index)}>
-                                Add Requirement
+                              <Label>Requirements ({milestone.requirements.length})</Label>
+                              <Button size="sm" variant="outline" onClick={() => openRequirementsModal(index)}>
+                                Manage Requirements
                               </Button>
                             </div>
-                            {milestone.requirements.map((req, reqIndex) => (
-                              <div key={reqIndex} className="flex items-center gap-2 mb-1">
-                                <span className="text-sm">
-                                  {reqIndex + 1}. {req}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    const newReqs = milestone.requirements.filter((_, i) => i !== reqIndex)
-                                    updateMilestone(index, { requirements: newReqs })
-                                  }}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                            {milestone.requirements.length > 0 && (
+                              <div className="text-sm text-gray-600 max-h-20 overflow-y-auto">
+                                {milestone.requirements.slice(0, 3).map((req, i) => (
+                                  <div key={i}>• {req}</div>
+                                ))}
+                                {milestone.requirements.length > 3 && (
+                                  <div className="text-gray-400">... and {milestone.requirements.length - 3} more</div>
+                                )}
                               </div>
-                            ))}
+                            )}
                           </div>
 
                           <div>
                             <div className="flex justify-between items-center mb-2">
-                              <Label>Data Fields</Label>
-                              <Button size="sm" variant="outline" onClick={() => addPlaceholderField(index)}>
-                                Add Field
+                              <Label>Data Fields ({milestone.placeholderFields.length})</Label>
+                              <Button size="sm" variant="outline" onClick={() => openFieldModal(index)}>
+                                Manage Fields
                               </Button>
                             </div>
-                            {milestone.placeholderFields.map((field, fieldIndex) => (
-                              <div key={field.id} className="flex items-center gap-2 mb-1">
-                                <span className="text-sm">
-                                  {field.label} ({field.type})
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  onClick={() => {
-                                    const newFields = milestone.placeholderFields.filter((_, i) => i !== fieldIndex)
-                                    updateMilestone(index, { placeholderFields: newFields })
-                                  }}
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </Button>
+                            {milestone.placeholderFields.length > 0 && (
+                              <div className="text-sm text-gray-600 max-h-20 overflow-y-auto">
+                                {milestone.placeholderFields.slice(0, 3).map((field, i) => (
+                                  <div key={i}>
+                                    • {field.label} ({field.type})
+                                  </div>
+                                ))}
+                                {milestone.placeholderFields.length > 3 && (
+                                  <div className="text-gray-400">
+                                    ... and {milestone.placeholderFields.length - 3} more
+                                  </div>
+                                )}
                               </div>
-                            ))}
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -302,6 +296,27 @@ export default function TemplatesPage() {
                     </Button>
                   </div>
                 </div>
+                <RequirementsModal
+                  open={requirementsModalOpen}
+                  onOpenChange={setRequirementsModalOpen}
+                  requirements={
+                    editingMilestoneIndex !== null
+                      ? newTemplate.milestones[editingMilestoneIndex]?.requirements || []
+                      : []
+                  }
+                  onSave={saveRequirements}
+                />
+
+                <FieldModal
+                  open={fieldModalOpen}
+                  onOpenChange={setFieldModalOpen}
+                  fields={
+                    editingMilestoneIndex !== null
+                      ? newTemplate.milestones[editingMilestoneIndex]?.placeholderFields || []
+                      : []
+                  }
+                  onSave={saveFields}
+                />
               </DialogContent>
             </Dialog>
           </div>
