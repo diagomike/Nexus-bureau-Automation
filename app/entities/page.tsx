@@ -253,18 +253,27 @@ export default function EntitiesPage() {
         {/* Entities Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredEntities.map((entity) => (
-            <Card key={entity.id} className="hover:shadow-lg transition-shadow">
-              <CardHeader>
+            <Card
+              key={entity.id}
+              className="relative overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-lg transition-shadow group"
+            >
+              {/* Accent Bar */}
+              <div className="absolute left-0 top-0 h-full w-1 bg-blue-600 group-hover:w-2 transition-all" />
+
+              <CardHeader className="pb-2">
                 <CardTitle className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Building2 className="h-5 w-5 mr-2 text-blue-600" />
-                    <span className="truncate">{entity.name}</span>
+                  <div className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5 text-blue-600" />
+                    <span className="truncate font-semibold text-lg">
+                      {entity.name}
+                    </span>
                   </div>
                   <div className="flex items-center space-x-1">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleEdit(entity)}
+                      className="border-gray-300 dark:border-gray-600"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
@@ -272,38 +281,52 @@ export default function EntitiesPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleDelete(entity.id)}
-                      className="text-red-600 hover:text-red-700"
+                      className="text-red-600 hover:text-red-700 border-gray-300 dark:border-gray-600"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardTitle>
-                <CardDescription className="text-xs">
+                <CardDescription className="text-xs mt-1 text-gray-500 dark:text-gray-400">
                   {entity.parentId ? getEntityHierarchy(entity) : "Root Entity"}
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Manager:</span>
-                    <span className="font-medium">
+              <CardContent className="pt-0 pb-4">
+                <div className="flex flex-col gap-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Manager:</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
                       {getManagerName(entity.managerId)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Sub-entities:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                      <Building2 className="h-4 w-4 text-blue-400" /> Sub-entities:
+                    </span>
                     <span className="font-medium">
                       {getSubEntitiesCount(entity.id)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Personnel:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                      <svg
+                        className="h-4 w-4 text-green-500"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle cx="12" cy="7" r="4" />
+                        <path d="M5.5 21a7.5 7.5 0 0 1 13 0" />
+                      </svg>
+                      Personnel:
+                    </span>
                     <span className="font-medium">
                       {getPersonnelCount(entity.id)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-500">Created:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">Created:</span>
                     <span className="font-medium">
                       {new Date(entity.createdAt).toLocaleDateString()}
                     </span>

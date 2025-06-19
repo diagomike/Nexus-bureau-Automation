@@ -1,71 +1,94 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
+import { useEffect, useState } from "react";
 // import { useAuth } from "@/contexts/auth-context"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Badge } from "@/components/ui/badge"
-import { storageService, type WorkflowTemplate, type MilestoneData, Personnel } from "@/lib/storage"
-import { FileText, Play, ArrowLeft } from "lucide-react"
-import Link from "next/link"
-import { AuthService } from "@/lib/auth"
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  storageService,
+  type WorkflowTemplate,
+  type MilestoneData,
+  Personnel,
+} from "@/lib/storage";
+import { FileText, Play, ArrowLeft } from "lucide-react";
+import Link from "next/link";
+import { AuthService } from "@/lib/auth";
 
 export default function NewWorkflowPage() {
   // const { user } = useAuth()
-  const [user, setUser] = useState<Personnel | null>(null)
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const templateId = searchParams.get("template")
+  const [user, setUser] = useState<Personnel | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const templateId = searchParams.get("template");
 
-  const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
-  const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null)
-  const [workflowTitle, setWorkflowTitle] = useState("")
-  const [creating, setCreating] = useState(false)
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([]);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<WorkflowTemplate | null>(null);
+  const [workflowTitle, setWorkflowTitle] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     // Only run once on mount to set user
-    const currentUser = AuthService.getCurrentUser()
+    const currentUser = AuthService.getCurrentUser();
     if (!currentUser) {
-      router.push("/login")
-      return
+      router.push("/login");
+      return;
     }
-    setUser(currentUser)
-  }, [router])
+    setUser(currentUser);
+  }, [router]);
 
   useEffect(() => {
-    if (!user) return
+    if (!user) return;
 
-    loadTemplates()
+    loadTemplates();
 
     if (templateId) {
-      const template = storageService.getWorkflowTemplateById(templateId)
+      const template = storageService.getWorkflowTemplateById(templateId);
       if (template) {
-        setSelectedTemplate(template)
-        setWorkflowTitle(template.title)
+        setSelectedTemplate(template);
+        setWorkflowTitle(template.title);
       }
     }
     // Only run when user or templateId changes
-  }, [user, templateId])
+  }, [user, templateId]);
+
+  // const loadTemplates = () => {
+  //   const allTemplates = storageService.getWorkflowTemplates()
+  //   setTemplates(allTemplates)
+  // }
 
   const loadTemplates = () => {
-    const allTemplates = storageService.getWorkflowTemplates()
-    setTemplates(allTemplates)
-  }
+    if (!user) return;
+    // Only show templates the user can access
+    const accessibleTemplates = storageService.getAccessibleWorkflowTemplates(
+      user.id
+    );
+    setTemplates(accessibleTemplates);
+  };
 
   const createWorkflow = async () => {
-    if (!user || !selectedTemplate || !workflowTitle.trim()) return
+    if (!user || !selectedTemplate || !workflowTitle.trim()) return;
 
-    setCreating(true)
+    setCreating(true);
     try {
       // Initialize milestone data
-      const milestoneData: MilestoneData[] = selectedTemplate.milestones.map((milestone, index) => ({
-        milestoneId: milestone.id,
-        status: index === 0 ? "active" : "pending",
-        fieldValues: {},
-      }))
+      const milestoneData: MilestoneData[] = selectedTemplate.milestones.map(
+        (milestone, index) => ({
+          milestoneId: milestone.id,
+          status: index === 0 ? "active" : "pending",
+          fieldValues: {},
+        })
+      );
 
       const newWorkflow = storageService.createWorkflowInstance({
         templateId: selectedTemplate.id,
@@ -74,17 +97,17 @@ export default function NewWorkflowPage() {
         status: "active",
         currentMilestoneIndex: 0,
         milestoneData,
-      })
+      });
 
-      router.push(`/workflows/${newWorkflow.id}`)
+      router.push(`/workflows/${newWorkflow.id}`);
     } catch (error) {
-      alert("Failed to create workflow")
+      alert("Failed to create workflow");
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
-  }
+  };
 
-  if (!user) return null
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -100,8 +123,12 @@ export default function NewWorkflowPage() {
                 </Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Start New Workflow</h1>
-                <p className="text-sm text-gray-500">Choose a template and begin a new process</p>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                  Start New Workflow
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Choose a template and begin a new process
+                </p>
               </div>
             </div>
           </div>
@@ -115,34 +142,49 @@ export default function NewWorkflowPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Available Templates</CardTitle>
-                <CardDescription>Select a workflow template to start with</CardDescription>
+                <CardDescription>
+                  Select a workflow template to start with
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 {templates.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No templates available</p>
+                  <p className="text-gray-500 text-center py-8">
+                    No templates available for you
+                  </p>
                 ) : (
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {templates.map((template) => (
                       <Card
                         key={template.id}
                         className={`cursor-pointer transition-colors ${
-                          selectedTemplate?.id === template.id ? "ring-2 ring-blue-500 bg-blue-50" : "hover:bg-gray-50"
+                          selectedTemplate?.id === template.id
+                            ? "ring-2 ring-blue-500 bg-blue-50"
+                            : "hover:bg-gray-50"
                         }`}
                         onClick={() => {
-                          setSelectedTemplate(template)
-                          setWorkflowTitle(template.title)
+                          setSelectedTemplate(template);
+                          setWorkflowTitle(template.title);
                         }}
                       >
                         <CardContent className="p-4">
                           <div className="flex items-start gap-3">
                             <FileText className="h-5 w-5 text-blue-600 mt-1" />
                             <div className="flex-1">
-                              <div className="font-medium">{template.title}</div>
-                              <div className="text-sm text-gray-500 mt-1">{template.description}</div>
+                              <div className="font-medium">
+                                {template.title}
+                              </div>
+                              <div className="text-sm text-gray-500 mt-1">
+                                {template.description}
+                              </div>
                               <div className="flex items-center gap-2 mt-2">
-                                <Badge variant="secondary">{template.milestones.length} steps</Badge>
+                                <Badge variant="secondary">
+                                  {template.milestones.length} steps
+                                </Badge>
                                 <span className="text-xs text-gray-400">
-                                  Created {new Date(template.createdAt).toLocaleDateString()}
+                                  Created{" "}
+                                  {new Date(
+                                    template.createdAt
+                                  ).toLocaleDateString()}
                                 </span>
                               </div>
                             </div>
@@ -163,7 +205,9 @@ export default function NewWorkflowPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Workflow Details</CardTitle>
-                    <CardDescription>Configure your new workflow instance</CardDescription>
+                    <CardDescription>
+                      Configure your new workflow instance
+                    </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
@@ -179,7 +223,9 @@ export default function NewWorkflowPage() {
                     <div>
                       <Label>Template</Label>
                       <div className="text-sm text-gray-600 mt-1">
-                        <div className="font-medium">{selectedTemplate.title}</div>
+                        <div className="font-medium">
+                          {selectedTemplate.title}
+                        </div>
                         <div>{selectedTemplate.description}</div>
                       </div>
                     </div>
@@ -196,29 +242,39 @@ export default function NewWorkflowPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Process Overview</CardTitle>
-                    <CardDescription>Steps that will be executed in this workflow</CardDescription>
+                    <CardDescription>
+                      Steps that will be executed in this workflow
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-3">
                       {selectedTemplate.milestones.map((milestone, index) => {
-                        const approvingEntity = storageService.getEntityById(milestone.approvingEntityId)
+                        const approvingEntity = storageService.getEntityById(
+                          milestone.approvingEntityId
+                        );
                         return (
-                          <div key={milestone.id} className="flex items-center gap-3 p-3 border rounded-lg">
+                          <div
+                            key={milestone.id}
+                            className="flex items-center gap-3 p-3 border rounded-lg"
+                          >
                             <div className="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
                               {index + 1}
                             </div>
                             <div className="flex-1">
-                              <div className="font-medium">{milestone.title}</div>
+                              <div className="font-medium">
+                                {milestone.title}
+                              </div>
                               <div className="text-sm text-gray-500">
-                                Approver: {approvingEntity?.name || "Unknown Entity"}
+                                Approver:{" "}
+                                {approvingEntity?.name || "Unknown Entity"}
                               </div>
                               <div className="text-xs text-gray-400 mt-1">
-                                {milestone.requirements.length} requirements, {milestone.placeholderFields.length}{" "}
-                                fields
+                                {milestone.requirements.length} requirements,{" "}
+                                {milestone.placeholderFields.length} fields
                               </div>
                             </div>
                           </div>
-                        )
+                        );
                       })}
                     </div>
                   </CardContent>
@@ -238,8 +294,12 @@ export default function NewWorkflowPage() {
               <Card>
                 <CardContent className="text-center py-12">
                   <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold mb-2">Select a Template</h3>
-                  <p className="text-gray-500">Choose a workflow template from the list to get started</p>
+                  <h3 className="text-lg font-semibold mb-2">
+                    Select a Template
+                  </h3>
+                  <p className="text-gray-500">
+                    Choose a workflow template from the list to get started
+                  </p>
                 </CardContent>
               </Card>
             )}
@@ -247,5 +307,5 @@ export default function NewWorkflowPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
