@@ -1,0 +1,357 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
+  storageService,
+  type WorkflowTemplate,
+  type Entity,
+  type Milestone,
+  type PlaceholderField,
+} from "@/lib/storage"
+import { Plus, FileText, Trash2 } from "lucide-react"
+import Link from "next/link"
+
+export default function TemplatesPage() {
+  const { user } = useAuth()
+  const router = useRouter()
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
+  const [entities, setEntities] = useState<Entity[]>([])
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [newTemplate, setNewTemplate] = useState({
+    title: "",
+    description: "",
+    milestones: [] as Milestone[],
+  })
+
+  useEffect(() => {
+    if (!user || user.role !== "manager") {
+      router.push("/dashboard")
+      return
+    }
+
+    loadTemplates()
+    loadEntities()
+  }, [user, router])
+
+  const loadTemplates = () => {
+    if (!user) return
+    const userTemplates = storageService.getWorkflowTemplatesByEntity(user.entityId)
+    setTemplates(userTemplates)
+  }
+
+  const loadEntities = () => {
+    const allEntities = storageService.getEntities()
+    setEntities(allEntities)
+  }
+
+  const createTemplate = () => {
+    if (!user || !newTemplate.title.trim()) return
+
+    storageService.createWorkflowTemplate({
+      title: newTemplate.title,
+      description: newTemplate.description,
+      entityId: user.entityId,
+      createdBy: user.id,
+      milestones: newTemplate.milestones,
+    })
+
+    setNewTemplate({ title: "", description: "", milestones: [] })
+    setIsCreateDialogOpen(false)
+    loadTemplates()
+  }
+
+  const deleteTemplate = (templateId: string) => {
+    if (confirm("Are you sure you want to delete this template?")) {
+      storageService.deleteWorkflowTemplate(templateId)
+      loadTemplates()
+    }
+  }
+
+  const addMilestone = () => {
+    const newMilestone: Milestone = {
+      id: Date.now().toString(),
+      title: "",
+      approvingEntityId: "",
+      requirements: [],
+      placeholderFields: [],
+      order: newTemplate.milestones.length,
+    }
+    setNewTemplate((prev) => ({
+      ...prev,
+      milestones: [...prev.milestones, newMilestone],
+    }))
+  }
+
+  const updateMilestone = (index: number, updates: Partial<Milestone>) => {
+    setNewTemplate((prev) => ({
+      ...prev,
+      milestones: prev.milestones.map((milestone, i) => (i === index ? { ...milestone, ...updates } : milestone)),
+    }))
+  }
+
+  const removeMilestone = (index: number) => {
+    setNewTemplate((prev) => ({
+      ...prev,
+      milestones: prev.milestones.filter((_, i) => i !== index),
+    }))
+  }
+
+  const addRequirement = (milestoneIndex: number) => {
+    const requirement = prompt("Enter requirement:")
+    if (requirement) {
+      updateMilestone(milestoneIndex, {
+        requirements: [...newTemplate.milestones[milestoneIndex].requirements, requirement],
+      })
+    }
+  }
+
+  const addPlaceholderField = (milestoneIndex: number) => {
+    const label = prompt("Enter field label:")
+    if (label) {
+      const newField: PlaceholderField = {
+        id: Date.now().toString(),
+        label,
+        type: "text",
+        required: true,
+      }
+      updateMilestone(milestoneIndex, {
+        placeholderFields: [...newTemplate.milestones[milestoneIndex].placeholderFields, newField],
+      })
+    }
+  }
+
+  if (!user || user.role !== "manager") return null
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <header className="bg-white dark:bg-gray-800 shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-6">
+            <div className="flex items-center">
+              <Link href="/dashboard" className="mr-4">
+                <Button variant="outline">← Back</Button>
+              </Link>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Workflow Templates</h1>
+                <p className="text-sm text-gray-500">Manage your organization's processes</p>
+              </div>
+            </div>
+            <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Template
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Create New Workflow Template</DialogTitle>
+                  <DialogDescription>Design a reusable process template for your organization</DialogDescription>
+                </DialogHeader>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="title">Template Title</Label>
+                      <Input
+                        id="title"
+                        value={newTemplate.title}
+                        onChange={(e) => setNewTemplate((prev) => ({ ...prev, title: e.target.value }))}
+                        placeholder="e.g., Employee Onboarding"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea
+                        id="description"
+                        value={newTemplate.description}
+                        onChange={(e) => setNewTemplate((prev) => ({ ...prev, description: e.target.value }))}
+                        placeholder="Describe this workflow..."
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-lg font-semibold">Milestones</h3>
+                      <Button onClick={addMilestone} size="sm">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Milestone
+                      </Button>
+                    </div>
+
+                    {newTemplate.milestones.map((milestone, index) => (
+                      <Card key={milestone.id} className="mb-4">
+                        <CardHeader className="pb-2">
+                          <div className="flex justify-between items-center">
+                            <CardTitle className="text-base">Milestone {index + 1}</CardTitle>
+                            <Button variant="destructive" size="sm" onClick={() => removeMilestone(index)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label>Milestone Title</Label>
+                              <Input
+                                value={milestone.title}
+                                onChange={(e) => updateMilestone(index, { title: e.target.value })}
+                                placeholder="e.g., IT Department Setup"
+                              />
+                            </div>
+                            <div>
+                              <Label>Approving Entity</Label>
+                              <Select
+                                value={milestone.approvingEntityId}
+                                onValueChange={(value) => updateMilestone(index, { approvingEntityId: value })}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select entity" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {entities.map((entity) => (
+                                    <SelectItem key={entity.id} value={entity.id}>
+                                      {entity.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <Label>Requirements</Label>
+                              <Button size="sm" variant="outline" onClick={() => addRequirement(index)}>
+                                Add Requirement
+                              </Button>
+                            </div>
+                            {milestone.requirements.map((req, reqIndex) => (
+                              <div key={reqIndex} className="flex items-center gap-2 mb-1">
+                                <span className="text-sm">
+                                  {reqIndex + 1}. {req}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const newReqs = milestone.requirements.filter((_, i) => i !== reqIndex)
+                                    updateMilestone(index, { requirements: newReqs })
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div>
+                            <div className="flex justify-between items-center mb-2">
+                              <Label>Data Fields</Label>
+                              <Button size="sm" variant="outline" onClick={() => addPlaceholderField(index)}>
+                                Add Field
+                              </Button>
+                            </div>
+                            {milestone.placeholderFields.map((field, fieldIndex) => (
+                              <div key={field.id} className="flex items-center gap-2 mb-1">
+                                <span className="text-sm">
+                                  {field.label} ({field.type})
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    const newFields = milestone.placeholderFields.filter((_, i) => i !== fieldIndex)
+                                    updateMilestone(index, { placeholderFields: newFields })
+                                  }}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={createTemplate} disabled={!newTemplate.title.trim()}>
+                      Create Template
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {templates.length === 0 ? (
+          <Card>
+            <CardContent className="text-center py-12">
+              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Templates Yet</h3>
+              <p className="text-gray-500 mb-4">Create your first workflow template to get started</p>
+              <Button onClick={() => setIsCreateDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Template
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {templates.map((template) => (
+              <Card key={template.id} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle className="text-lg">{template.title}</CardTitle>
+                      <CardDescription className="mt-1">{template.description}</CardDescription>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => deleteTemplate(template.id)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">Milestones:</span>
+                      <Badge variant="secondary">{template.milestones.length}</Badge>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      Created: {new Date(template.createdAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
