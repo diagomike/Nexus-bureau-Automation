@@ -1,51 +1,66 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Trash2, Plus } from "lucide-react"
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Trash2, Plus } from "lucide-react";
 
 interface RequirementsModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  requirements: string[]
-  onSave: (requirements: string[]) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  requirements: string[];
+  onSave: (requirements: string[]) => void;
 }
 
-export function RequirementsModal({ open, onOpenChange, requirements, onSave }: RequirementsModalProps) {
-  const [localRequirements, setLocalRequirements] = useState<string[]>(requirements)
-  const [newRequirement, setNewRequirement] = useState("")
+export function RequirementsModal({
+  open,
+  onOpenChange,
+  requirements,
+  onSave,
+}: RequirementsModalProps) {
+  const [localRequirements, setLocalRequirements] =
+    useState<string[]>(requirements);
+  const [newRequirement, setNewRequirement] = useState("");
 
   const addRequirement = () => {
     if (newRequirement.trim()) {
-      setLocalRequirements([...localRequirements, newRequirement.trim()])
-      setNewRequirement("")
+      setLocalRequirements([...localRequirements, newRequirement.trim()]);
+      setNewRequirement("");
     }
-  }
+  };
 
   const removeRequirement = (index: number) => {
-    setLocalRequirements(localRequirements.filter((_, i) => i !== index))
-  }
+    setLocalRequirements(localRequirements.filter((_, i) => i !== index));
+  };
 
   const handleSave = () => {
-    onSave(localRequirements)
-    onOpenChange(false)
-  }
+    onSave(localRequirements);
+    setLocalRequirements(() => []); // Reset to original requirements
+    onOpenChange(false);
+  };
 
   const handleCancel = () => {
-    setLocalRequirements(requirements)
-    setNewRequirement("")
-    onOpenChange(false)
-  }
+    setLocalRequirements(requirements);
+    setNewRequirement("");
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Manage Requirements</DialogTitle>
-          <DialogDescription>Add requirements that need to be fulfilled for this milestone</DialogDescription>
+          <DialogDescription>
+            Add requirements that need to be fulfilled for this milestone
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -72,11 +87,18 @@ export function RequirementsModal({ open, onOpenChange, requirements, onSave }: 
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {localRequirements.map((req, index) => (
-                  <div key={index} className="flex items-center gap-2 p-2 border rounded">
+                  <div
+                    key={index}
+                    className="flex items-center gap-2 p-2 border rounded"
+                  >
                     <span className="flex-1 text-sm">
                       {index + 1}. {req}
                     </span>
-                    <Button variant="ghost" size="sm" onClick={() => removeRequirement(index)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeRequirement(index)}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -94,5 +116,5 @@ export function RequirementsModal({ open, onOpenChange, requirements, onSave }: 
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }
