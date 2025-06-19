@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { use, useEffect, useState } from "react"
 // import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -21,11 +21,13 @@ import Link from "next/link"
 import { AuthService } from "@/lib/auth"
 
 interface WorkflowPageProps {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 export default function WorkflowPage({ params }: WorkflowPageProps) {
   // const { user } = useAuth()
+  const unwrappedParams = use(params) // <-- unwrap the params promise
+  
   const [user, setUser] = useState<Personnel | null>(null)
   const router = useRouter()
   const [workflow, setWorkflow] = useState<WorkflowInstance | null>(null)
@@ -47,11 +49,11 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
 
   useEffect(() => {
     if (!user) return
-    loadWorkflow()
-  }, [user, params.id])
+    loadWorkflow(unwrappedParams.id)
+  }, [user]) // params.id])
 
-  const loadWorkflow = () => {
-    const workflowInstance = storageService.getWorkflowInstanceById(params.id)
+  const loadWorkflow = (workflowId: string) => {
+    const workflowInstance = storageService.getWorkflowInstanceById(workflowId)
     if (!workflowInstance) {
       router.push("/dashboard")
       return
@@ -145,7 +147,7 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
         completedAt: isLastMilestone ? new Date().toISOString() : undefined,
       })
 
-      loadWorkflow()
+      loadWorkflow(workflow.id)
     } catch (error) {
       alert("Failed to approve milestone")
     } finally {
