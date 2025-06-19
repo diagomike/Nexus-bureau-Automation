@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth-context"
+// import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -24,14 +24,17 @@ import {
   type Entity,
   type Milestone,
   type PlaceholderField,
+  type Personnel
 } from "@/lib/storage"
 import { Plus, FileText, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { RequirementsModal } from "@/components/requirements-modal"
 import { FieldModal } from "@/components/field-modal"
+import { AuthService } from "@/lib/auth"
 
 export default function TemplatesPage() {
-  const { user } = useAuth()
+  // const { user } = useAuth()
+  const [user, setUser] = useState<Personnel | null>(null)
   const router = useRouter()
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
   const [entities, setEntities] = useState<Entity[]>([])
@@ -47,14 +50,19 @@ export default function TemplatesPage() {
   const [editingMilestoneIndex, setEditingMilestoneIndex] = useState<number | null>(null)
 
   useEffect(() => {
-    if (!user || user.role !== "manager") {
+    const currentUser = AuthService.getCurrentUser()
+    if (!currentUser || currentUser.role === "member") {
       router.push("/dashboard")
       return
     }
+    setUser(currentUser)
 
-    loadTemplates()
-    loadEntities()
-  }, [user, router])
+    // Load templates and entities after setting user
+    const userTemplates = storageService.getWorkflowTemplatesByEntity(currentUser.entityId)
+    setTemplates(userTemplates)
+    const allEntities = storageService.getEntities()
+    setEntities(allEntities)
+  }, [router])
 
   const loadTemplates = () => {
     if (!user) return
@@ -141,7 +149,7 @@ export default function TemplatesPage() {
     }
   }
 
-  if (!user || user.role !== "manager") return null
+  if (!user || user.role === "member") return null
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

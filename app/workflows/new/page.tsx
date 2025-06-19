@@ -1,19 +1,21 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth-context"
+// import { useAuth } from "@/contexts/auth-context"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { storageService, type WorkflowTemplate, type MilestoneData } from "@/lib/storage"
+import { storageService, type WorkflowTemplate, type MilestoneData, Personnel } from "@/lib/storage"
 import { FileText, Play, ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { AuthService } from "@/lib/auth"
 
 export default function NewWorkflowPage() {
-  const { user } = useAuth()
+  // const { user } = useAuth()
+  const [user, setUser] = useState<Personnel | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
   const templateId = searchParams.get("template")
@@ -24,10 +26,17 @@ export default function NewWorkflowPage() {
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
-    if (!user) {
+    // Only run once on mount to set user
+    const currentUser = AuthService.getCurrentUser()
+    if (!currentUser) {
       router.push("/login")
       return
     }
+    setUser(currentUser)
+  }, [router])
+
+  useEffect(() => {
+    if (!user) return
 
     loadTemplates()
 
@@ -38,7 +47,8 @@ export default function NewWorkflowPage() {
         setWorkflowTitle(template.title)
       }
     }
-  }, [user, router, templateId])
+    // Only run when user or templateId changes
+  }, [user, templateId])
 
   const loadTemplates = () => {
     const allTemplates = storageService.getWorkflowTemplates()

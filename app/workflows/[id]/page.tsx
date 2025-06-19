@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useAuth } from "@/contexts/auth-context"
+// import { useAuth } from "@/contexts/auth-context"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -18,13 +18,15 @@ import {
 } from "@/lib/storage"
 import { FileText, Clock, CheckCircle, AlertCircle, User, Calendar, ArrowLeft, Download } from "lucide-react"
 import Link from "next/link"
+import { AuthService } from "@/lib/auth"
 
 interface WorkflowPageProps {
   params: { id: string }
 }
 
 export default function WorkflowPage({ params }: WorkflowPageProps) {
-  const { user } = useAuth()
+  // const { user } = useAuth()
+  const [user, setUser] = useState<Personnel | null>(null)
   const router = useRouter()
   const [workflow, setWorkflow] = useState<WorkflowInstance | null>(null)
   const [template, setTemplate] = useState<WorkflowTemplate | null>(null)
@@ -34,13 +36,19 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
   const [approving, setApproving] = useState(false)
 
   useEffect(() => {
-    if (!user) {
+    // Set user on mount
+    const currentUser = AuthService.getCurrentUser()
+    if (!currentUser) {
       router.push("/login")
       return
     }
+    setUser(currentUser)
+  }, [router])
 
+  useEffect(() => {
+    if (!user) return
     loadWorkflow()
-  }, [user, router, params.id])
+  }, [user, params.id])
 
   const loadWorkflow = () => {
     const workflowInstance = storageService.getWorkflowInstanceById(params.id)
