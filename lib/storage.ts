@@ -181,7 +181,6 @@ class StorageService {
     const user = this.getPersonnelById(userId)
     if (!user) return false
 
-    console.log(template)
     if (template.executioner.type === "personnel") {
       return template.executioner.id === userId
     } else if (template.executioner.type === "entity") {
