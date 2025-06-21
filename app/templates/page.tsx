@@ -17,20 +17,21 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   storageService,
   type WorkflowTemplate,
   type Entity,
   type Milestone,
   type PlaceholderField,
-  type Personnel
+  type Personnel,
 } from "@/lib/storage"
 import { Plus, FileText, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { RequirementsModal } from "@/components/requirements-modal"
 import { FieldModal } from "@/components/field-modal"
 import { AuthService } from "@/lib/auth"
+import { ExecutionerSelector } from "@/components/executioner-selector"
+import { ApprovingEntitySelector } from "@/components/approving-entity-selector" // Import the new component
 
 export default function TemplatesPage() {
   // const { user } = useAuth()
@@ -39,11 +40,20 @@ export default function TemplatesPage() {
   const [templates, setTemplates] = useState<WorkflowTemplate[]>([])
   const [entities, setEntities] = useState<Entity[]>([])
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [newTemplate, setNewTemplate] = useState({
+  const [newTemplate, setNewTemplate] = useState<{
+    title: string
+    description: string
+    milestones: Milestone[]
+    executioner: { type: "personnel" | "entity"; id: string }
+  }>({
     title: "",
     description: "",
-    milestones: [] as Milestone[],
+    milestones: [],
+    executioner: { type: "personnel", id: "" },
   })
+
+  const [viewingTemplate, setViewingTemplate] = useState<WorkflowTemplate | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
 
   const [requirementsModalOpen, setRequirementsModalOpen] = useState(false)
   const [fieldModalOpen, setFieldModalOpen] = useState(false)
@@ -70,9 +80,32 @@ export default function TemplatesPage() {
     setTemplates(userTemplates)
   }
 
-  const loadEntities = () => {
-    const allEntities = storageService.getEntities()
-    setEntities(allEntities)
+  const viewTemplate = (template: WorkflowTemplate) => {
+    setViewingTemplate(template)
+    setNewTemplate({
+      title: template.title,
+      description: template.description,
+      milestones: template.milestones,
+      executioner: template.executioner,
+    })
+    setHasChanges(false)
+    setIsCreateDialogOpen(true)
+  }
+
+  const archiveTemplate = (templateId: string) => {
+    if (confirm("Are you sure you want to archive this template? It will no longer be available for new workflows.")) {
+      // For now, we'll use a simple flag in the template object
+      const template = storageService.getWorkflowTemplateById(templateId)
+      if (template) {
+        storageService.updateWorkflowTemplate(templateId, { ...template, archived: true })
+        loadTemplates()
+      }
+    }
+  }
+
+  const handleTemplateChange = (field: string, value: any) => {
+    setNewTemplate((prev) => ({ ...prev, [field]: value }))
+    setHasChanges(true)
   }
 
   const createTemplate = () => {
@@ -84,9 +117,17 @@ export default function TemplatesPage() {
       entityId: user.entityId,
       createdBy: user.id,
       milestones: newTemplate.milestones,
+      executioner: newTemplate.executioner,
     })
 
-    setNewTemplate({ title: "", description: "", milestones: [] })
+    setNewTemplate({
+      title: "",
+      description: "",
+      milestones: [],
+      executioner: { type: "personnel", id: "" },
+    })
+    setViewingTemplate(null)
+    setHasChanges(false)
     setIsCreateDialogOpen(false)
     loadTemplates()
   }
@@ -175,8 +216,14 @@ export default function TemplatesPage() {
               </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
-                  <DialogTitle>Create New Workflow Template</DialogTitle>
-                  <DialogDescription>Design a reusable process template for your organization</DialogDescription>
+                  <DialogTitle>
+                    {viewingTemplate ? "View Template Details" : "Create New Workflow Template"}
+                  </DialogTitle>
+                  <DialogDescription>
+                    {viewingTemplate
+                      ? "View template details and create a copy with modifications"
+                      : "Design a reusable process template for your organization"}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-6">
                   <div className="grid grid-cols-2 gap-4">
@@ -185,7 +232,12 @@ export default function TemplatesPage() {
                       <Input
                         id="title"
                         value={newTemplate.title}
-                        onChange={(e) => setNewTemplate((prev) => ({ ...prev, title: e.target.value }))}
+                        onChange={(e) =>
+                          setNewTemplate((prev) => ({
+                            ...prev,
+                            title: e.target.value,
+                          }))
+                        }
                         placeholder="e.g., Employee Onboarding"
                       />
                     </div>
@@ -194,11 +246,22 @@ export default function TemplatesPage() {
                       <Textarea
                         id="description"
                         value={newTemplate.description}
-                        onChange={(e) => setNewTemplate((prev) => ({ ...prev, description: e.target.value }))}
+                        onChange={(e) =>
+                          setNewTemplate((prev) => ({
+                            ...prev,
+                            description: e.target.value,
+                          }))
+                        }
                         placeholder="Describe this workflow..."
                       />
                     </div>
                   </div>
+
+                  <ExecutionerSelector
+                    value={newTemplate.executioner.id ? newTemplate.executioner : null}
+                    onChange={(executioner) => setNewTemplate((prev) => ({ ...prev, executioner }))}
+                    currentEntityId={user.entityId}
+                  />
 
                   <div>
                     <div className="flex justify-between items-center mb-4">
@@ -225,27 +288,25 @@ export default function TemplatesPage() {
                               <Label>Milestone Title</Label>
                               <Input
                                 value={milestone.title}
-                                onChange={(e) => updateMilestone(index, { title: e.target.value })}
+                                onChange={(e) =>
+                                  updateMilestone(index, {
+                                    title: e.target.value,
+                                  })
+                                }
                                 placeholder="e.g., IT Department Setup"
                               />
                             </div>
                             <div>
                               <Label>Approving Entity</Label>
-                              <Select
+                              <ApprovingEntitySelector
                                 value={milestone.approvingEntityId}
-                                onValueChange={(value) => updateMilestone(index, { approvingEntityId: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select entity" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {entities.map((entity) => (
-                                    <SelectItem key={entity.id} value={entity.id}>
-                                      {entity.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
+                                onChange={(entityId) =>
+                                  updateMilestone(index, {
+                                    approvingEntityId: entityId,
+                                  })
+                                }
+                                currentEntityId={user.entityId}
+                              />
                             </div>
                           </div>
 
@@ -299,8 +360,11 @@ export default function TemplatesPage() {
                     <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button onClick={createTemplate} disabled={!newTemplate.title.trim()}>
-                      Create Template
+                    <Button
+                      onClick={createTemplate}
+                      disabled={viewingTemplate ? !hasChanges : !newTemplate.title.trim()}
+                    >
+                      {viewingTemplate ? "Create Copy From" : "Create Template"}
                     </Button>
                   </div>
                 </div>
@@ -367,6 +431,17 @@ export default function TemplatesPage() {
                     </div>
                     <div className="text-xs text-gray-400">
                       Created: {new Date(template.createdAt).toLocaleDateString()}
+                    </div>
+                    <div className="flex gap-2 mt-4">
+                      <Button size="sm" variant="outline" onClick={() => viewTemplate(template)}>
+                        View Details
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => archiveTemplate(template.id)}>
+                        Archive
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteTemplate(template.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
                 </CardContent>

@@ -93,7 +93,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-6 p-4 rounded-lg">
             <h3 className="font-medium mb-2">Demo Accounts:</h3>
             <div className="text-sm space-y-1">
               <div>

@@ -12,7 +12,7 @@ import {
   type Entity,
   type Personnel,
 } from "@/lib/storage"
-import { Building2, FileText, Clock, Plus, Users, Settings } from "lucide-react"
+import { Building2, FileText, Clock, Plus, Users, Settings, BarChart3 } from "lucide-react"
 import Link from "next/link"
 import { AuthService } from "@/lib/auth"
 
@@ -46,7 +46,9 @@ export default function DashboardPage() {
     setPendingApprovals(approvals)
 
     // Load available templates (for now, show all)
-    const templates = storageService.getWorkflowTemplates()
+    // const templates = storageService.getWorkflowTemplates()
+    const templates = storageService.getAccessibleWorkflowTemplates(currentUser.id)
+
     setAvailableTemplates(templates)
   }, [router])
 
@@ -133,6 +135,17 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent>
                     <p className="text-xs text-muted-foreground">Create and manage organizations</p>
+                  </CardContent>
+                </Card>
+              </Link>
+              <Link href="/analytics">
+                <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                  <CardHeader className="flex flex-row items-center space-y-0 pb-2">
+                    <BarChart3 className="h-4 w-4 text-indigo-600" />
+                    <CardTitle className="ml-2 text-sm font-medium">Analytics</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground">View workflow performance insights</p>
                   </CardContent>
                 </Card>
               </Link>

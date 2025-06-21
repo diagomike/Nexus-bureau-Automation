@@ -1,27 +1,45 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { Trash2, Plus } from "lucide-react"
-import type { PlaceholderField } from "@/lib/storage"
+import { useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Trash2, Plus } from "lucide-react";
+import type { PlaceholderField } from "@/lib/storage";
 
 interface FieldModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  fields: PlaceholderField[]
-  onSave: (fields: PlaceholderField[]) => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  fields: PlaceholderField[];
+  onSave: (fields: PlaceholderField[]) => void;
 }
 
-export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalProps) {
-  const [localFields, setLocalFields] = useState<PlaceholderField[]>(fields)
-  const [editingField, setEditingField] = useState<Partial<PlaceholderField> | null>(null)
-  const [newOption, setNewOption] = useState("")
+export function FieldModal({
+  open,
+  onOpenChange,
+  fields,
+  onSave,
+}: FieldModalProps) {
+  const [localFields, setLocalFields] = useState<PlaceholderField[]>(fields);
+  const [editingField, setEditingField] =
+    useState<Partial<PlaceholderField> | null>(null);
+  const [newOption, setNewOption] = useState("");
 
   const fieldTypes = [
     { value: "text", label: "Text Input" },
@@ -34,9 +52,9 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
     { value: "radio", label: "Radio Buttons" },
     { value: "checkbox", label: "Checkbox" },
     { value: "boolean", label: "Yes/No Switch" },
-  ]
+  ];
 
-  const needsOptions = ["select", "multiselect", "radio"]
+  const needsOptions = ["select", "multiselect", "radio"];
 
   const startNewField = () => {
     setEditingField({
@@ -46,11 +64,11 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
       required: false,
       options: [],
       placeholder: "",
-    })
-  }
+    });
+  };
 
   const saveField = () => {
-    if (!editingField || !editingField.label?.trim()) return
+    if (!editingField || !editingField.label?.trim()) return;
 
     const field: PlaceholderField = {
       id: editingField.id || Date.now().toString(),
@@ -59,65 +77,70 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
       required: editingField.required || false,
       options: editingField.options || [],
       placeholder: editingField.placeholder || "",
-    }
+    };
 
-    const existingIndex = localFields.findIndex((f) => f.id === field.id)
+    const existingIndex = localFields.findIndex((f) => f.id === field.id);
     if (existingIndex >= 0) {
-      setLocalFields(localFields.map((f, i) => (i === existingIndex ? field : f)))
+      setLocalFields(
+        localFields.map((f, i) => (i === existingIndex ? field : f))
+      );
     } else {
-      setLocalFields([...localFields, field])
+      setLocalFields([...localFields, field]);
     }
 
-    setEditingField(null)
-  }
+    setEditingField(null);
+  };
 
   const editField = (field: PlaceholderField) => {
-    setEditingField({ ...field })
-  }
+    setEditingField({ ...field });
+  };
 
   const removeField = (fieldId: string) => {
-    setLocalFields(localFields.filter((f) => f.id !== fieldId))
-  }
+    setLocalFields(localFields.filter((f) => f.id !== fieldId));
+  };
 
   const addOption = () => {
-    if (!newOption.trim() || !editingField) return
+    if (!newOption.trim() || !editingField) return;
 
-    const options = editingField.options || []
+    const options = editingField.options || [];
     setEditingField({
       ...editingField,
       options: [...options, newOption.trim()],
-    })
-    setNewOption("")
-  }
+    });
+    setNewOption("");
+  };
 
   const removeOption = (optionIndex: number) => {
-    if (!editingField) return
+    if (!editingField) return;
 
-    const options = editingField.options || []
+    const options = editingField.options || [];
     setEditingField({
       ...editingField,
       options: options.filter((_, i) => i !== optionIndex),
-    })
-  }
+    });
+  };
 
   const handleSave = () => {
-    onSave(localFields)
-    onOpenChange(false)
-  }
+    onSave(localFields);
+    setLocalFields(() => []);
+    onOpenChange(false);
+  };
 
   const handleCancel = () => {
-    setLocalFields(fields)
-    setEditingField(null)
-    setNewOption("")
-    onOpenChange(false)
-  }
+    setLocalFields(fields);
+    setEditingField(null);
+    setNewOption("");
+    onOpenChange(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Manage Input Fields</DialogTitle>
-          <DialogDescription>Create dynamic form fields that approvers will fill out</DialogDescription>
+          <DialogDescription>
+            Create dynamic form fields that approvers will fill out
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -136,11 +159,15 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
             ) : (
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {localFields.map((field) => (
-                  <div key={field.id} className="flex items-center gap-2 p-3 border rounded">
+                  <div
+                    key={field.id}
+                    className="flex items-center gap-2 p-3 border rounded"
+                  >
                     <div className="flex-1">
                       <div className="font-medium">{field.label}</div>
                       <div className="text-sm text-gray-500">
-                        Type: {fieldTypes.find((t) => t.value === field.type)?.label}
+                        Type:{" "}
+                        {fieldTypes.find((t) => t.value === field.type)?.label}
                         {field.required && (
                           <Badge variant="secondary" className="ml-2">
                             Required
@@ -148,10 +175,18 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                         )}
                       </div>
                     </div>
-                    <Button variant="ghost" size="sm" onClick={() => editField(field)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => editField(field)}
+                    >
                       Edit
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => removeField(field.id)}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeField(field.id)}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -165,7 +200,9 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
             {editingField ? (
               <>
                 <Label className="text-base font-semibold">
-                  {localFields.find((f) => f.id === editingField.id) ? "Edit Field" : "New Field"}
+                  {localFields.find((f) => f.id === editingField.id)
+                    ? "Edit Field"
+                    : "New Field"}
                 </Label>
 
                 <div className="space-y-4">
@@ -174,7 +211,12 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                     <Input
                       id="field-label"
                       value={editingField.label || ""}
-                      onChange={(e) => setEditingField({ ...editingField, label: e.target.value })}
+                      onChange={(e) =>
+                        setEditingField({
+                          ...editingField,
+                          label: e.target.value,
+                        })
+                      }
                       placeholder="e.g., Employee Name"
                     />
                   </div>
@@ -187,7 +229,9 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                         setEditingField({
                           ...editingField,
                           type: value as PlaceholderField["type"],
-                          options: needsOptions.includes(value) ? editingField.options || [] : undefined,
+                          options: needsOptions.includes(value)
+                            ? editingField.options || []
+                            : undefined,
                         })
                       }
                     >
@@ -209,7 +253,12 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                     <Input
                       id="field-placeholder"
                       value={editingField.placeholder || ""}
-                      onChange={(e) => setEditingField({ ...editingField, placeholder: e.target.value })}
+                      onChange={(e) =>
+                        setEditingField({
+                          ...editingField,
+                          placeholder: e.target.value,
+                        })
+                      }
                       placeholder="Hint text for users"
                     />
                   </div>
@@ -218,7 +267,12 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                     <Checkbox
                       id="field-required"
                       checked={editingField.required || false}
-                      onCheckedChange={(checked) => setEditingField({ ...editingField, required: !!checked })}
+                      onCheckedChange={(checked) =>
+                        setEditingField({
+                          ...editingField,
+                          required: !!checked,
+                        })
+                      }
                     />
                     <Label htmlFor="field-required">Required field</Label>
                   </div>
@@ -239,9 +293,16 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                       </div>
                       <div className="space-y-1 max-h-32 overflow-y-auto">
                         {(editingField.options || []).map((option, index) => (
-                          <div key={index} className="flex items-center gap-2 p-2 border rounded">
+                          <div
+                            key={index}
+                            className="flex items-center gap-2 p-2 border rounded"
+                          >
                             <span className="flex-1 text-sm">{option}</span>
-                            <Button variant="ghost" size="sm" onClick={() => removeOption(index)}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeOption(index)}
+                            >
                               <Trash2 className="h-3 w-3" />
                             </Button>
                           </div>
@@ -252,10 +313,16 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
                 </div>
 
                 <div className="flex gap-2">
-                  <Button onClick={saveField} disabled={!editingField.label?.trim()}>
+                  <Button
+                    onClick={saveField}
+                    disabled={!editingField.label?.trim()}
+                  >
                     Save Field
                   </Button>
-                  <Button variant="outline" onClick={() => setEditingField(null)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditingField(null)}
+                  >
                     Cancel
                   </Button>
                 </div>
@@ -276,5 +343,5 @@ export function FieldModal({ open, onOpenChange, fields, onSave }: FieldModalPro
         </div>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

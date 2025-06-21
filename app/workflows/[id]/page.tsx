@@ -19,6 +19,7 @@ import {
 import { FileText, Clock, CheckCircle, AlertCircle, User, Calendar, ArrowLeft, Download } from "lucide-react"
 import Link from "next/link"
 import { AuthService } from "@/lib/auth"
+import { pdfGenerator } from "@/lib/pdf-generator"
 
 interface WorkflowPageProps {
   params: Promise<{ id: string }>
@@ -26,8 +27,8 @@ interface WorkflowPageProps {
 
 export default function WorkflowPage({ params }: WorkflowPageProps) {
   // const { user } = useAuth()
-  const unwrappedParams = use(params) // <-- unwrap the params promise
-  
+  const {id: unwrappedParamsId} = use(params)
+
   const [user, setUser] = useState<Personnel | null>(null)
   const router = useRouter()
   const [workflow, setWorkflow] = useState<WorkflowInstance | null>(null)
@@ -49,7 +50,8 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
 
   useEffect(() => {
     if (!user) return
-    loadWorkflow(unwrappedParams.id)
+    loadWorkflow(unwrappedParamsId)
+    console.log(`the working params: ${unwrappedParamsId}`)
   }, [user]) // params.id])
 
   const loadWorkflow = (workflowId: string) => {
@@ -155,6 +157,32 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
     }
   }
 
+  const generatePDF = async () => {
+    if (!workflow || !template || !owner) return
+
+    try {
+      const blob = await pdfGenerator.generateWorkflowPDF({
+        workflowInstance: workflow,
+        template,
+        owner,
+        entities,
+        includeSignatures: true,
+      })
+
+      // Create download link
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `workflow-${workflow.id}-${workflow.title.replace(/[^a-zA-Z0-9]/g, "-")}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      alert("Failed to generate PDF")
+    }
+  }
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "approved":
@@ -205,7 +233,7 @@ export default function WorkflowPage({ params }: WorkflowPageProps) {
             <div className="flex items-center gap-4">
               <Badge className={getStatusColor(workflow.status)}>{workflow.status}</Badge>
               {workflow.status === "completed" && (
-                <Button variant="outline">
+                <Button variant="outline" onClick={generatePDF}>
                   <Download className="h-4 w-4 mr-2" />
                   Export PDF
                 </Button>

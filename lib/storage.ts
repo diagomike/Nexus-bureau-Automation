@@ -26,6 +26,11 @@ export interface WorkflowTemplate {
   entityId: string
   createdBy: string
   milestones: Milestone[]
+  executioner: {
+    type: "personnel" | "entity"
+    id: string
+  }
+  archived?: boolean
   createdAt: string
 }
 
@@ -135,6 +140,82 @@ class StorageService {
     return this.getEntities().filter((e) => e.parentId === parentId)
   }
 
+  // Get all descendant entities of a given entity
+  getDescendantEntities(entityId: string): Entity[] {
+    const allEntities = this.getEntities()
+    const descendants: Entity[] = []
+
+    const findDescendants = (parentId: string) => {
+      const children = allEntities.filter((e) => e.parentId === parentId)
+      children.forEach((child) => {
+        descendants.push(child)
+        findDescendants(child.id)
+      })
+    }
+
+    findDescendants(entityId)
+    return descendants
+  }
+
+  // Get all ancestor entities of a given entity
+  getAncestorEntities(entityId: string): Entity[] {
+    const allEntities = this.getEntities()
+    const ancestors: Entity[] = []
+
+    let currentEntity = allEntities.find((e) => e.id === entityId)
+    while (currentEntity?.parentId) {
+      const parent = allEntities.find((e) => e.id === currentEntity!.parentId)
+      if (parent) {
+        ancestors.unshift(parent)
+        currentEntity = parent
+      } else {
+        break
+      }
+    }
+
+    return ancestors
+  }
+
+  // Check if user can access workflow based on executioner assignment
+  canUserAccessWorkflow(userId: string, template: WorkflowTemplate): boolean {
+    const user = this.getPersonnelById(userId)
+    if (!user) return false
+
+    console.log(template)
+    if (template.executioner.type === "personnel") {
+      return template.executioner.id === userId
+    } else if (template.executioner.type === "entity") {
+      // Check if user belongs to the executioner entity or its descendants
+      const userEntity = this.getEntityById(user.entityId)
+      if (!userEntity) return false
+
+      if (user.entityId === template.executioner.id) return true
+
+      // Check if user's entity is a descendant of the executioner entity
+      const ancestors = this.getAncestorEntities(user.entityId)
+      return ancestors.some((ancestor) => ancestor.id === template.executioner.id)
+    }
+
+    return false
+  }
+
+  // Get accessible workflows for a user
+  getAccessibleWorkflowTemplates(userId: string): WorkflowTemplate[] {
+    const allTemplates = this.getWorkflowTemplates().filter((t) => !t.archived)
+    return allTemplates.filter((template) => this.canUserAccessWorkflow(userId, template))
+  }
+
+  // Get personnel within entity hierarchy
+  getHierarchicalPersonnel(entityId: string): Personnel[] {
+    const entity = this.getEntityById(entityId)
+    if (!entity) return []
+
+    const descendants = this.getDescendantEntities(entityId)
+    const entityIds = [entityId, ...descendants.map((e) => e.id)]
+
+    return this.getPersonnel().filter((p) => entityIds.includes(p.entityId))
+  }
+
   // Add this method to the StorageService class
   searchEntities(query: string): Entity[] {
     const entities = this.getEntities()
@@ -233,7 +314,7 @@ class StorageService {
   }
 
   getWorkflowTemplatesByEntity(entityId: string): WorkflowTemplate[] {
-    return this.getWorkflowTemplates().filter((t) => t.entityId === entityId)
+    return this.getWorkflowTemplates().filter((t) => t.entityId === entityId && !t.archived)
   }
 
   // Workflow Instance operations
