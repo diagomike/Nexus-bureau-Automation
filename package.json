@@ -44,11 +44,7 @@
     "date-fns": "4.1.0",
     "embla-carousel-react": "latest",
     "input-otp": "latest",
-<<<<<<< HEAD
     "jspdf": "^3.0.1",
-=======
-    "jspdf": "latest",
->>>>>>> 1c4d439cfb3375aba036ae7034a21bb9db9708ad
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
     "next-themes": "latest",
