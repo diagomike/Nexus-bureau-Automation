@@ -1,9 +1,9 @@
-// Centralized localStorage service for easy migration to real backend
+// Centralized localStorage service with comprehensive logging and audit trail
 export interface Entity {
   id: string
   name: string
   parentId: string | null
-  managerId: string
+  adminId: string // Changed from managerId to adminId
   visibility: "public" | "protected" | "private"
   tokenId: string // For protected entities
   stampUrl?: string
@@ -15,6 +15,9 @@ export interface Entity {
     verified: boolean
   }
   createdAt: string
+  createdBy: string
+  updatedAt: string
+  updatedBy: string
 }
 
 export interface Personnel {
@@ -22,10 +25,13 @@ export interface Personnel {
   email: string
   password: string
   name: string
-  role: "superadmin" | "entity_admin" | "approver" | "consumer"
-  entityId?: string // Optional for consumers
+  role: "superadmin" | "entity_admin" | "approver" | "member" | "consumer"
+  entityId: string // Required for all personnel
   signatureUrl?: string
   createdAt: string
+  createdBy: string
+  updatedAt: string
+  updatedBy: string
 }
 
 export interface WorkflowTemplate {
@@ -43,6 +49,8 @@ export interface WorkflowTemplate {
   usageLimit?: number
   usageCount: number
   createdAt: string
+  updatedAt: string
+  updatedBy: string
 }
 
 export interface Milestone {
@@ -107,6 +115,9 @@ export interface WorkflowInstance {
   milestoneData: (MilestoneData | PaymentMilestoneData)[]
   createdAt: string
   completedAt?: string
+  createdBy: string
+  updatedAt: string
+  updatedBy: string
 }
 
 export interface MilestoneData {
@@ -126,6 +137,27 @@ export interface PaymentMilestoneData {
   verificationData?: any
   verifiedAt?: string
   paymentReference?: string
+}
+
+// New: Comprehensive audit log system
+export interface AuditLog {
+  id: string
+  timestamp: string
+  userId: string
+  userName: string
+  userRole: string
+  action: "CREATE" | "UPDATE" | "DELETE" | "LOGIN" | "LOGOUT" | "APPROVE" | "REJECT" | "VERIFY_PAYMENT"
+  resourceType: "Entity" | "Personnel" | "WorkflowTemplate" | "WorkflowInstance" | "System"
+  resourceId: string
+  resourceName: string
+  changes?: {
+    field: string
+    oldValue: any
+    newValue: any
+  }[]
+  metadata?: Record<string, any>
+  ipAddress?: string
+  userAgent?: string
 }
 
 class StorageService {
@@ -151,12 +183,100 @@ class StorageService {
     return Math.random().toString(36).substr(2, 9).toUpperCase()
   }
 
-  // Entity operations
+  // Audit logging system
+  private createAuditLog(
+    userId: string,
+    action: AuditLog["action"],
+    resourceType: AuditLog["resourceType"],
+    resourceId: string,
+    resourceName: string,
+    changes?: AuditLog["changes"],
+    metadata?: Record<string, any>,
+  ): void {
+    const user = this.getPersonnelById(userId)
+    if (!user) return
+
+    const log: AuditLog = {
+      id: this.generateId(),
+      timestamp: new Date().toISOString(),
+      userId,
+      userName: user.name,
+      userRole: user.role,
+      action,
+      resourceType,
+      resourceId,
+      resourceName,
+      changes,
+      metadata,
+      ipAddress: "127.0.0.1", // In real app, get from request
+      userAgent: navigator.userAgent,
+    }
+
+    const logs = this.getAuditLogs()
+    logs.push(log)
+    this.save("audit_logs", logs)
+  }
+
+  // Audit log operations
+  getAuditLogs(): AuditLog[] {
+    return this.getAll<AuditLog>("audit_logs")
+  }
+
+  searchAuditLogs(filters: {
+    userId?: string
+    action?: string
+    resourceType?: string
+    dateFrom?: string
+    dateTo?: string
+    searchTerm?: string
+  }): AuditLog[] {
+    let logs = this.getAuditLogs()
+
+    if (filters.userId) {
+      logs = logs.filter((log) => log.userId === filters.userId)
+    }
+
+    if (filters.action) {
+      logs = logs.filter((log) => log.action === filters.action)
+    }
+
+    if (filters.resourceType) {
+      logs = logs.filter((log) => log.resourceType === filters.resourceType)
+    }
+
+    if (filters.dateFrom) {
+      logs = logs.filter((log) => new Date(log.timestamp) >= new Date(filters.dateFrom!))
+    }
+
+    if (filters.dateTo) {
+      logs = logs.filter((log) => new Date(log.timestamp) <= new Date(filters.dateTo!))
+    }
+
+    if (filters.searchTerm) {
+      const term = filters.searchTerm.toLowerCase()
+      logs = logs.filter(
+        (log) =>
+          log.userName.toLowerCase().includes(term) ||
+          log.resourceName.toLowerCase().includes(term) ||
+          log.action.toLowerCase().includes(term),
+      )
+    }
+
+    return logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+  }
+
+  // Entity operations with audit logging
   getEntities(): Entity[] {
     return this.getAll<Entity>("entities")
   }
 
-  createEntity(entity: Omit<Entity, "id" | "createdAt" | "tokenId" | "subscriptionExpiry" | "usageCount">): Entity {
+  createEntity(
+    entity: Omit<
+      Entity,
+      "id" | "createdAt" | "tokenId" | "subscriptionExpiry" | "createdBy" | "updatedAt" | "updatedBy"
+    >,
+    createdBy: string,
+  ): Entity {
     const entities = this.getEntities()
     const newEntity: Entity = {
       ...entity,
@@ -164,28 +284,67 @@ class StorageService {
       tokenId: this.generateTokenId(),
       subscriptionExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days free trial
       createdAt: new Date().toISOString(),
+      createdBy,
+      updatedAt: new Date().toISOString(),
+      updatedBy: createdBy,
     }
     entities.push(newEntity)
     this.save("entities", entities)
+
+    // Create audit log
+    this.createAuditLog(createdBy, "CREATE", "Entity", newEntity.id, newEntity.name)
+
     return newEntity
   }
 
-  updateEntity(id: string, updates: Partial<Entity>): Entity | null {
+  updateEntity(id: string, updates: Partial<Entity>, updatedBy: string): Entity | null {
     const entities = this.getEntities()
     const index = entities.findIndex((e) => e.id === id)
     if (index === -1) return null
 
-    entities[index] = { ...entities[index], ...updates }
+    const oldEntity = { ...entities[index] }
+    const changes: AuditLog["changes"] = []
+
+    // Track changes
+    Object.keys(updates).forEach((key) => {
+      const oldValue = (oldEntity as any)[key]
+      const newValue = (updates as any)[key]
+      if (oldValue !== newValue) {
+        changes.push({
+          field: key,
+          oldValue,
+          newValue,
+        })
+      }
+    })
+
+    entities[index] = {
+      ...entities[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    }
     this.save("entities", entities)
+
+    // Create audit log
+    if (changes.length > 0) {
+      this.createAuditLog(updatedBy, "UPDATE", "Entity", id, entities[index].name, changes)
+    }
+
     return entities[index]
   }
 
-  deleteEntity(id: string): boolean {
+  deleteEntity(id: string, deletedBy: string): boolean {
     const entities = this.getEntities()
-    const filtered = entities.filter((e) => e.id !== id)
-    if (filtered.length === entities.length) return false
+    const entity = entities.find((e) => e.id === id)
+    if (!entity) return false
 
+    const filtered = entities.filter((e) => e.id !== id)
     this.save("entities", filtered)
+
+    // Create audit log
+    this.createAuditLog(deletedBy, "DELETE", "Entity", id, entity.name)
+
     return true
   }
 
@@ -249,7 +408,7 @@ class StorageService {
     // Filter by visibility based on user role
     if (userRole === "consumer") {
       entities = entities.filter((e) => e.visibility === "public")
-    } else if (userRole === "entity_admin" || userRole === "approver") {
+    } else if (userRole === "entity_admin" || userRole === "approver" || userRole === "member") {
       // Can see their own entity hierarchy + public entities
       const userEntity = userEntityId ? this.getEntityById(userEntityId) : null
       if (userEntity) {
@@ -275,16 +434,14 @@ class StorageService {
     const user = this.getPersonnelById(userId)
     if (!user) return false
 
-    // Public workflows are accessible to all consumers
+    // Public workflows are accessible to all consumers and members
     if (template.executioner.type === "public") {
-      return user.role === "consumer" || user.role === "approver"
+      return user.role === "consumer" || user.role === "member" || user.role === "approver"
     }
 
     if (template.executioner.type === "personnel") {
       return template.executioner.id === userId
     } else if (template.executioner.type === "entity") {
-      if (!user.entityId) return false
-
       const userEntity = this.getEntityById(user.entityId)
       if (!userEntity) return false
 
@@ -325,7 +482,7 @@ class StorageService {
     const descendants = this.getDescendantEntities(entityId)
     const entityIds = [entityId, ...descendants.map((e) => e.id)]
 
-    return this.getPersonnel().filter((p) => p.entityId && entityIds.includes(p.entityId))
+    return this.getPersonnel().filter((p) => entityIds.includes(p.entityId))
   }
 
   // Check if entity subscription is expired
@@ -336,39 +493,82 @@ class StorageService {
     return new Date(entity.subscriptionExpiry) < new Date()
   }
 
-  // Personnel operations
+  // Personnel operations with audit logging
   getPersonnel(): Personnel[] {
     return this.getAll<Personnel>("personnel")
   }
 
-  createPersonnel(personnel: Omit<Personnel, "id" | "createdAt">): Personnel {
+  createPersonnel(
+    personnel: Omit<Personnel, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy">,
+    createdBy: string,
+  ): Personnel {
     const allPersonnel = this.getPersonnel()
     const newPersonnel: Personnel = {
       ...personnel,
       id: this.generateId(),
       createdAt: new Date().toISOString(),
+      createdBy,
+      updatedAt: new Date().toISOString(),
+      updatedBy: createdBy,
     }
     allPersonnel.push(newPersonnel)
     this.save("personnel", allPersonnel)
+
+    // Create audit log
+    this.createAuditLog(createdBy, "CREATE", "Personnel", newPersonnel.id, newPersonnel.name)
+
     return newPersonnel
   }
 
-  updatePersonnel(id: string, updates: Partial<Personnel>): Personnel | null {
+  updatePersonnel(id: string, updates: Partial<Personnel>, updatedBy: string): Personnel | null {
     const allPersonnel = this.getPersonnel()
     const index = allPersonnel.findIndex((p) => p.id === id)
     if (index === -1) return null
 
-    allPersonnel[index] = { ...allPersonnel[index], ...updates }
+    const oldPersonnel = { ...allPersonnel[index] }
+    const changes: AuditLog["changes"] = []
+
+    // Track changes (excluding sensitive fields like password)
+    Object.keys(updates).forEach((key) => {
+      if (key === "password") return // Don't log password changes
+      const oldValue = (oldPersonnel as any)[key]
+      const newValue = (updates as any)[key]
+      if (oldValue !== newValue) {
+        changes.push({
+          field: key,
+          oldValue,
+          newValue,
+        })
+      }
+    })
+
+    allPersonnel[index] = {
+      ...allPersonnel[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    }
     this.save("personnel", allPersonnel)
+
+    // Create audit log
+    if (changes.length > 0) {
+      this.createAuditLog(updatedBy, "UPDATE", "Personnel", id, allPersonnel[index].name, changes)
+    }
+
     return allPersonnel[index]
   }
 
-  deletePersonnel(id: string): boolean {
+  deletePersonnel(id: string, deletedBy: string): boolean {
     const allPersonnel = this.getPersonnel()
-    const filtered = allPersonnel.filter((p) => p.id !== id)
-    if (filtered.length === allPersonnel.length) return false
+    const personnel = allPersonnel.find((p) => p.id === id)
+    if (!personnel) return false
 
+    const filtered = allPersonnel.filter((p) => p.id !== id)
     this.save("personnel", filtered)
+
+    // Create audit log
+    this.createAuditLog(deletedBy, "DELETE", "Personnel", id, personnel.name)
+
     return true
   }
 
@@ -381,43 +581,88 @@ class StorageService {
   }
 
   authenticatePersonnel(email: string, password: string): Personnel | null {
-    return this.getPersonnel().find((p) => p.email === email && p.password === password) || null
+    const personnel = this.getPersonnel().find((p) => p.email === email && p.password === password)
+    if (personnel) {
+      // Create audit log for login
+      this.createAuditLog(personnel.id, "LOGIN", "System", "login", "User Login")
+    }
+    return personnel || null
   }
 
-  // Workflow Template operations
+  // Workflow Template operations with audit logging
   getWorkflowTemplates(): WorkflowTemplate[] {
     return this.getAll<WorkflowTemplate>("workflow_templates")
   }
 
-  createWorkflowTemplate(template: Omit<WorkflowTemplate, "id" | "createdAt" | "usageCount">): WorkflowTemplate {
+  createWorkflowTemplate(
+    template: Omit<WorkflowTemplate, "id" | "createdAt" | "usageCount" | "updatedAt" | "updatedBy">,
+  ): WorkflowTemplate {
     const templates = this.getWorkflowTemplates()
     const newTemplate: WorkflowTemplate = {
       ...template,
       id: this.generateId(),
       usageCount: 0,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      updatedBy: template.createdBy,
     }
     templates.push(newTemplate)
     this.save("workflow_templates", templates)
+
+    // Create audit log
+    this.createAuditLog(template.createdBy, "CREATE", "WorkflowTemplate", newTemplate.id, newTemplate.title)
+
     return newTemplate
   }
 
-  updateWorkflowTemplate(id: string, updates: Partial<WorkflowTemplate>): WorkflowTemplate | null {
+  updateWorkflowTemplate(id: string, updates: Partial<WorkflowTemplate>, updatedBy: string): WorkflowTemplate | null {
     const templates = this.getWorkflowTemplates()
     const index = templates.findIndex((t) => t.id === id)
     if (index === -1) return null
 
-    templates[index] = { ...templates[index], ...updates }
+    const oldTemplate = { ...templates[index] }
+    const changes: AuditLog["changes"] = []
+
+    // Track changes
+    Object.keys(updates).forEach((key) => {
+      const oldValue = (oldTemplate as any)[key]
+      const newValue = (updates as any)[key]
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changes.push({
+          field: key,
+          oldValue,
+          newValue,
+        })
+      }
+    })
+
+    templates[index] = {
+      ...templates[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    }
     this.save("workflow_templates", templates)
+
+    // Create audit log
+    if (changes.length > 0) {
+      this.createAuditLog(updatedBy, "UPDATE", "WorkflowTemplate", id, templates[index].title, changes)
+    }
+
     return templates[index]
   }
 
-  deleteWorkflowTemplate(id: string): boolean {
+  deleteWorkflowTemplate(id: string, deletedBy: string): boolean {
     const templates = this.getWorkflowTemplates()
-    const filtered = templates.filter((t) => t.id !== id)
-    if (filtered.length === templates.length) return false
+    const template = templates.find((t) => t.id === id)
+    if (!template) return false
 
+    const filtered = templates.filter((t) => t.id !== id)
     this.save("workflow_templates", filtered)
+
+    // Create audit log
+    this.createAuditLog(deletedBy, "DELETE", "WorkflowTemplate", id, template.title)
+
     return true
   }
 
@@ -430,41 +675,77 @@ class StorageService {
   }
 
   // Increment usage count when workflow is started
-  incrementWorkflowUsage(templateId: string): void {
+  incrementWorkflowUsage(templateId: string, userId: string): void {
     const template = this.getWorkflowTemplateById(templateId)
     if (template) {
-      this.updateWorkflowTemplate(templateId, { usageCount: template.usageCount + 1 })
+      this.updateWorkflowTemplate(templateId, { usageCount: template.usageCount + 1 }, userId)
     }
   }
 
-  // Workflow Instance operations
+  // Workflow Instance operations with audit logging
   getWorkflowInstances(): WorkflowInstance[] {
     return this.getAll<WorkflowInstance>("workflow_instances")
   }
 
-  createWorkflowInstance(instance: Omit<WorkflowInstance, "id" | "createdAt">): WorkflowInstance {
+  createWorkflowInstance(
+    instance: Omit<WorkflowInstance, "id" | "createdAt" | "createdBy" | "updatedAt" | "updatedBy">,
+    createdBy: string,
+  ): WorkflowInstance {
     const instances = this.getWorkflowInstances()
     const newInstance: WorkflowInstance = {
       ...instance,
       id: this.generateId(),
       createdAt: new Date().toISOString(),
+      createdBy,
+      updatedAt: new Date().toISOString(),
+      updatedBy: createdBy,
     }
     instances.push(newInstance)
     this.save("workflow_instances", instances)
 
     // Increment usage count
-    this.incrementWorkflowUsage(instance.templateId)
+    this.incrementWorkflowUsage(instance.templateId, createdBy)
+
+    // Create audit log
+    this.createAuditLog(createdBy, "CREATE", "WorkflowInstance", newInstance.id, newInstance.title)
 
     return newInstance
   }
 
-  updateWorkflowInstance(id: string, updates: Partial<WorkflowInstance>): WorkflowInstance | null {
+  updateWorkflowInstance(id: string, updates: Partial<WorkflowInstance>, updatedBy: string): WorkflowInstance | null {
     const instances = this.getWorkflowInstances()
     const index = instances.findIndex((i) => i.id === id)
     if (index === -1) return null
 
-    instances[index] = { ...instances[index], ...updates }
+    const oldInstance = { ...instances[index] }
+    const changes: AuditLog["changes"] = []
+
+    // Track changes
+    Object.keys(updates).forEach((key) => {
+      const oldValue = (oldInstance as any)[key]
+      const newValue = (updates as any)[key]
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        changes.push({
+          field: key,
+          oldValue,
+          newValue,
+        })
+      }
+    })
+
+    instances[index] = {
+      ...instances[index],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+      updatedBy,
+    }
     this.save("workflow_instances", instances)
+
+    // Create audit log
+    if (changes.length > 0) {
+      this.createAuditLog(updatedBy, "UPDATE", "WorkflowInstance", id, instances[index].title, changes)
+    }
+
     return instances[index]
   }
 
@@ -496,83 +777,132 @@ class StorageService {
       }
 
       // Check if this personnel's entity matches the approving entity
-      return personnel.entityId && standardMilestone.approvingEntityId === personnel.entityId
+      return standardMilestone.approvingEntityId === personnel.entityId
     })
   }
 
-  // Initialize with sample data
+  // Initialize with sample data including the Public entity for consumers
   initializeSampleData(): void {
     if (this.getPersonnel().length > 0) return // Already initialized
 
-    // Create root entities
-    const govEntity = this.createEntity({
-      name: "Government of Example",
-      parentId: null,
-      managerId: "temp",
-      visibility: "public",
-    })
+    // Create the default "Public" entity for consumers
+    const publicEntity = this.createEntity(
+      {
+        name: "Public",
+        parentId: null,
+        adminId: "temp", // Will be updated after creating superadmin
+        visibility: "public",
+      },
+      "system",
+    )
 
-    const healthMinistry = this.createEntity({
-      name: "Ministry of Health",
-      parentId: govEntity.id,
-      managerId: "temp",
-      visibility: "public",
-    })
+    // Create root government entity
+    const govEntity = this.createEntity(
+      {
+        name: "Government of Example",
+        parentId: null,
+        adminId: "temp",
+        visibility: "public",
+      },
+      "system",
+    )
+
+    const healthMinistry = this.createEntity(
+      {
+        name: "Ministry of Health",
+        parentId: govEntity.id,
+        adminId: "temp",
+        visibility: "public",
+      },
+      "system",
+    )
 
     // Create SuperAdmin (Nexus Staff)
-    const superAdmin = this.createPersonnel({
-      email: "admin@nexus.gov",
-      password: "admin123",
-      name: "System Administrator",
-      role: "superadmin",
-      entityId: govEntity.id,
-    })
+    const superAdmin = this.createPersonnel(
+      {
+        email: "admin@nexus.gov",
+        password: "admin123",
+        name: "System Administrator",
+        role: "superadmin",
+        entityId: govEntity.id,
+      },
+      "system",
+    )
 
     // Create Entity Admin
-    const entityAdmin = this.createPersonnel({
-      email: "admin@health.gov",
-      password: "admin123",
-      name: "Health IT Administrator",
-      role: "entity_admin",
-      entityId: healthMinistry.id,
-    })
+    const entityAdmin = this.createPersonnel(
+      {
+        email: "admin@health.gov",
+        password: "admin123",
+        name: "Health IT Administrator",
+        role: "entity_admin",
+        entityId: healthMinistry.id,
+      },
+      superAdmin.id,
+    )
 
     // Create Approver
-    const approver = this.createPersonnel({
-      email: "minister@health.gov",
-      password: "minister123",
-      name: "Dr. Sarah Johnson - Health Minister",
-      role: "approver",
-      entityId: healthMinistry.id,
-    })
+    const approver = this.createPersonnel(
+      {
+        email: "minister@health.gov",
+        password: "minister123",
+        name: "Dr. Sarah Johnson - Health Minister",
+        role: "approver",
+        entityId: healthMinistry.id,
+      },
+      entityAdmin.id,
+    )
 
-    // Create Consumer
-    this.createPersonnel({
-      email: "john.doe@gmail.com",
-      password: "user123",
-      name: "John Doe",
-      role: "consumer",
-    })
+    // Create Member
+    const member = this.createPersonnel(
+      {
+        email: "staff@health.gov",
+        password: "staff123",
+        name: "Health Staff Member",
+        role: "member",
+        entityId: healthMinistry.id,
+      },
+      entityAdmin.id,
+    )
 
-    // Update entity manager IDs
-    this.updateEntity(govEntity.id, { managerId: superAdmin.id })
-    this.updateEntity(healthMinistry.id, { managerId: entityAdmin.id })
+    // Create Consumer (under Public entity)
+    this.createPersonnel(
+      {
+        email: "john.doe@gmail.com",
+        password: "user123",
+        name: "John Doe",
+        role: "consumer",
+        entityId: publicEntity.id,
+      },
+      "system",
+    )
+
+    // Update entity admin IDs
+    this.updateEntity(publicEntity.id, { adminId: superAdmin.id }, superAdmin.id)
+    this.updateEntity(govEntity.id, { adminId: superAdmin.id }, superAdmin.id)
+    this.updateEntity(healthMinistry.id, { adminId: entityAdmin.id }, superAdmin.id)
 
     // Create regional health office
-    const regionalHealth = this.createEntity({
-      name: "Regional Health Office - North",
-      parentId: healthMinistry.id,
-      managerId: entityAdmin.id,
-      visibility: "protected",
-    })
+    const regionalHealth = this.createEntity(
+      {
+        name: "Regional Health Office - North",
+        parentId: healthMinistry.id,
+        adminId: entityAdmin.id,
+        visibility: "protected",
+      },
+      entityAdmin.id,
+    )
 
     // Create IT Department
-    const itDept = this.createEntity({
-      name: "IT Department",
-      parentId: govEntity.id,
-      managerId: superAdmin.id,
-      visibility: "private",
-    })
+    const itDept = this.createEntity(
+      {
+        name: "IT Department",
+        parentId: govEntity.id,
+        adminId: superAdmin.id,
+        visibility: "private",
+      },
+      superAdmin.id,
+    )
   }
 }
 

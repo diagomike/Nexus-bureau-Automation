@@ -139,6 +139,7 @@ export default function DashboardPage() {
       <TabsList>
         <TabsTrigger value="overview">Overview</TabsTrigger>
         <TabsTrigger value="client-support">Client Support</TabsTrigger>
+        <TabsTrigger value="logs">Audit Logs</TabsTrigger>
       </TabsList>
 
       <TabsContent value="overview" className="space-y-6">
@@ -320,6 +321,61 @@ export default function DashboardPage() {
                     </CardContent>
                   </Card>
                 ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="logs" className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent System Activity</CardTitle>
+            <CardDescription>Latest audit logs and system changes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <p className="text-sm text-gray-600">Monitor all system activities, user actions, and data changes</p>
+                <Link href="/logs">
+                  <Button>
+                    <Search className="h-4 w-4 mr-2" />
+                    View All Logs
+                  </Button>
+                </Link>
+              </div>
+
+              {/* Recent logs preview */}
+              <div className="space-y-2">
+                {storageService
+                  .getAuditLogs()
+                  .slice(0, 5)
+                  .map((log) => (
+                    <div key={log.id} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Badge
+                          className={
+                            log.action === "CREATE"
+                              ? "bg-green-100 text-green-800"
+                              : log.action === "UPDATE"
+                                ? "bg-blue-100 text-blue-800"
+                                : log.action === "DELETE"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-gray-100 text-gray-800"
+                          }
+                        >
+                          {log.action}
+                        </Badge>
+                        <div>
+                          <p className="text-sm font-medium">{log.userName}</p>
+                          <p className="text-xs text-gray-500">
+                            {log.action} {log.resourceType}: {log.resourceName}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-xs text-gray-400">{new Date(log.timestamp).toLocaleString()}</span>
+                    </div>
+                  ))}
               </div>
             </div>
           </CardContent>

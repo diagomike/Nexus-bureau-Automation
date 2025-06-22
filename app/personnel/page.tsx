@@ -1,121 +1,112 @@
-"use client";
+"use client"
 
-import type React from "react";
+import type React from "react"
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Users, Plus, Edit, Trash2, Search } from "lucide-react";
-import Link from "next/link";
-import { AuthService } from "@/lib/auth";
-import { storageService, type Personnel, type Entity } from "@/lib/storage";
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Users, Plus, Edit, Trash2, Search, Shield, User, Crown, Settings, Globe } from "lucide-react"
+import Link from "next/link"
+import { AuthService } from "@/lib/auth"
+import { storageService, type Personnel, type Entity } from "@/lib/storage"
 
 export default function PersonnelPage() {
-  const [user, setUser] = useState<Personnel | null>(null);
-  const router = useRouter();
-  const [personnel, setPersonnel] = useState<Personnel[]>([]);
-  const [entities, setEntities] = useState<Entity[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [filteredPersonnel, setFilteredPersonnel] = useState<Personnel[]>([]);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editingPersonnel, setEditingPersonnel] = useState<Personnel | null>(
-    null
-  );
+  const [user, setUser] = useState<Personnel | null>(null)
+  const router = useRouter()
+  const [personnel, setPersonnel] = useState<Personnel[]>([])
+  const [entities, setEntities] = useState<Entity[]>([])
+  const [searchQuery, setSearchQuery] = useState("")
+  const [filteredPersonnel, setFilteredPersonnel] = useState<Personnel[]>([])
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [editingPersonnel, setEditingPersonnel] = useState<Personnel | null>(null)
 
   // Form state
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
-    role: "member" as "superadmin" | "manager" | "member",
+    role: "member" as "superadmin" | "entity_admin" | "approver" | "member" | "consumer",
     entityId: "",
-  });
+  })
 
   useEffect(() => {
-    const currentUser = AuthService.getCurrentUser();
+    const currentUser = AuthService.getCurrentUser()
     if (!currentUser) {
-      router.push("/login");
-      return;
+      router.push("/login")
+      return
     }
 
-    if (currentUser.role !== "manager" && currentUser.role !== "superadmin") {
-      router.push("/dashboard");
-      return;
+    if (currentUser.role !== "entity_admin" && currentUser.role !== "superadmin") {
+      router.push("/dashboard")
+      return
     }
 
-    setUser(currentUser);
-  }, [router]);
+    setUser(currentUser)
+  }, [router])
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) return
 
-    // Load only personnel from current entity and its descendants
-    const hierarchicalPersonnel = storageService.getHierarchicalPersonnel(
-      user.entityId
-    );
-    const allEntities = storageService.getEntities();
-    setPersonnel(hierarchicalPersonnel);
-    setEntities(allEntities);
-    setFilteredPersonnel(hierarchicalPersonnel);
-  }, [user]);
+    let hierarchicalPersonnel: Personnel[]
+    let availableEntities: Entity[]
+
+    if (user.role === "superadmin") {
+      // SuperAdmin can see all personnel and entities
+      hierarchicalPersonnel = storageService.getPersonnel()
+      availableEntities = storageService.getEntities()
+    } else {
+      // Entity Admin can only see personnel from their hierarchy
+      hierarchicalPersonnel = storageService.getHierarchicalPersonnel(user.entityId)
+      const currentEntity = storageService.getEntityById(user.entityId)
+      const descendants = storageService.getDescendantEntities(user.entityId)
+      availableEntities = currentEntity ? [currentEntity, ...descendants] : descendants
+    }
+
+    setPersonnel(hierarchicalPersonnel)
+    setEntities(availableEntities)
+    setFilteredPersonnel(hierarchicalPersonnel)
+  }, [user])
 
   useEffect(() => {
     if (searchQuery.trim()) {
       const filtered = personnel.filter(
         (p) =>
           p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.email.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-      setFilteredPersonnel(filtered);
+          p.email.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+      setFilteredPersonnel(filtered)
     } else {
-      setFilteredPersonnel(personnel);
+      setFilteredPersonnel(personnel)
     }
-  }, [searchQuery, personnel]);
+  }, [searchQuery, personnel])
 
   const loadData = () => {
-    if (!user) return;
+    if (!user) return
 
-    // Load only personnel from current entity and its descendants
-    const hierarchicalPersonnel = storageService.getHierarchicalPersonnel(
-      user.entityId
-    );
-    const allEntities = storageService.getEntities();
-    setPersonnel(hierarchicalPersonnel);
-    setEntities(allEntities);
-    setFilteredPersonnel(hierarchicalPersonnel);
-  };
+    let hierarchicalPersonnel: Personnel[]
+    let availableEntities: Entity[]
+
+    if (user.role === "superadmin") {
+      hierarchicalPersonnel = storageService.getPersonnel()
+      availableEntities = storageService.getEntities()
+    } else {
+      hierarchicalPersonnel = storageService.getHierarchicalPersonnel(user.entityId)
+      const currentEntity = storageService.getEntityById(user.entityId)
+      const descendants = storageService.getDescendantEntities(user.entityId)
+      availableEntities = currentEntity ? [currentEntity, ...descendants] : descendants
+    }
+
+    setPersonnel(hierarchicalPersonnel)
+    setEntities(availableEntities)
+    setFilteredPersonnel(hierarchicalPersonnel)
+  }
 
   const resetForm = () => {
     setFormData({
@@ -124,14 +115,14 @@ export default function PersonnelPage() {
       password: "",
       role: "member",
       entityId: "",
-    });
-    setEditingPersonnel(null);
-  };
+    })
+    setEditingPersonnel(null)
+  }
 
   const handleCreate = () => {
-    setIsCreateModalOpen(true);
-    resetForm();
-  };
+    setIsCreateModalOpen(true)
+    resetForm()
+  }
 
   const handleEdit = (personnel: Personnel) => {
     setFormData({
@@ -140,20 +131,20 @@ export default function PersonnelPage() {
       password: "", // Don't pre-fill password
       role: personnel.role,
       entityId: personnel.entityId,
-    });
-    setEditingPersonnel(personnel);
-    setIsCreateModalOpen(true);
-  };
+    })
+    setEditingPersonnel(personnel)
+    setIsCreateModalOpen(true)
+  }
 
   const handleDelete = (personnelId: string) => {
     if (confirm("Are you sure you want to delete this personnel?")) {
-      storageService.deletePersonnel(personnelId);
-      loadData();
+      storageService.deletePersonnel(personnelId, user!.id)
+      loadData()
     }
-  };
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
 
     if (editingPersonnel) {
       // Update existing personnel
@@ -162,46 +153,87 @@ export default function PersonnelPage() {
         email: formData.email,
         role: formData.role,
         entityId: formData.entityId,
-      };
-      if (formData.password) {
-        updates.password = formData.password;
       }
-      storageService.updatePersonnel(editingPersonnel.id, updates);
+      if (formData.password) {
+        updates.password = formData.password
+      }
+      storageService.updatePersonnel(editingPersonnel.id, updates, user!.id)
     } else {
       // Create new personnel
-      storageService.createPersonnel({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        role: formData.role,
-        entityId: formData.entityId,
-      });
+      storageService.createPersonnel(
+        {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+          entityId: formData.entityId,
+        },
+        user!.id,
+      )
     }
 
-    setIsCreateModalOpen(false);
-    resetForm();
-    loadData();
-  };
+    setIsCreateModalOpen(false)
+    resetForm()
+    loadData()
+  }
 
   const getEntityName = (entityId: string) => {
-    const entity = entities.find((e) => e.id === entityId);
-    return entity?.name || "Unknown Entity";
-  };
+    const entity = entities.find((e) => e.id === entityId)
+    return entity?.name || "Unknown Entity"
+  }
+
+  const getRoleIcon = (role: string) => {
+    switch (role) {
+      case "superadmin":
+        return <Crown className="h-4 w-4 text-red-600" />
+      case "entity_admin":
+        return <Settings className="h-4 w-4 text-blue-600" />
+      case "approver":
+        return <Shield className="h-4 w-4 text-green-600" />
+      case "member":
+        return <User className="h-4 w-4 text-purple-600" />
+      case "consumer":
+        return <Globe className="h-4 w-4 text-orange-600" />
+      default:
+        return <User className="h-4 w-4 text-gray-600" />
+    }
+  }
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
       case "superadmin":
-        return "bg-red-100 text-red-800";
-      case "manager":
-        return "bg-blue-100 text-blue-800";
+        return "bg-red-100 text-red-800"
+      case "entity_admin":
+        return "bg-blue-100 text-blue-800"
+      case "approver":
+        return "bg-green-100 text-green-800"
       case "member":
-        return "bg-green-100 text-green-800";
+        return "bg-purple-100 text-purple-800"
+      case "consumer":
+        return "bg-orange-100 text-orange-800"
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800"
     }
-  };
+  }
 
-  if (!user) return null;
+  const getRoleDisplayName = (role: string) => {
+    switch (role) {
+      case "superadmin":
+        return "Nexus Staff"
+      case "entity_admin":
+        return "Entity Admin"
+      case "approver":
+        return "Approver"
+      case "member":
+        return "Member"
+      case "consumer":
+        return "Consumer"
+      default:
+        return role
+    }
+  }
+
+  if (!user) return null
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -214,11 +246,11 @@ export default function PersonnelPage() {
                 <Button variant="outline">← Back</Button>
               </Link>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-                  Personnel Management
-                </h1>
+                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Personnel Management</h1>
                 <p className="text-sm text-gray-500">
                   Manage team members and their roles
+                  {user.role === "superadmin" && " (All Personnel)"}
+                  {user.role === "entity_admin" && " (Your Hierarchy)"}
                 </p>
               </div>
             </div>
@@ -255,9 +287,7 @@ export default function PersonnelPage() {
               <Users className="h-5 w-5 mr-2" />
               Personnel ({filteredPersonnel.length})
             </CardTitle>
-            <CardDescription>
-              Manage personnel accounts and permissions
-            </CardDescription>
+            <CardDescription>Manage personnel accounts and permissions</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
@@ -277,37 +307,50 @@ export default function PersonnelPage() {
                     <TableCell className="font-medium">{person.name}</TableCell>
                     <TableCell>{person.email}</TableCell>
                     <TableCell>
-                      <Badge className={getRoleBadgeColor(person.role)}>
-                        {person.role}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        {getRoleIcon(person.role)}
+                        <Badge className={getRoleBadgeColor(person.role)}>{getRoleDisplayName(person.role)}</Badge>
+                      </div>
                     </TableCell>
                     <TableCell>{getEntityName(person.entityId)}</TableCell>
-                    <TableCell>
-                      {new Date(person.createdAt).toLocaleDateString()}
-                    </TableCell>
+                    <TableCell>{new Date(person.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell>
                       <div className="flex items-center space-x-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleEdit(person)}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => handleEdit(person)}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(person.id)}
-                          className="text-red-600 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {person.id !== user.id && ( // Prevent self-deletion
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDelete(person.id)}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+
+            {filteredPersonnel.length === 0 && (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No personnel found</h3>
+                <p className="text-gray-500 mb-4">
+                  {searchQuery ? "No personnel match your search criteria." : "Get started by adding personnel."}
+                </p>
+                {!searchQuery && (
+                  <Button onClick={handleCreate}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Personnel
+                  </Button>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -316,13 +359,9 @@ export default function PersonnelPage() {
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {editingPersonnel ? "Edit Personnel" : "Add New Personnel"}
-            </DialogTitle>
+            <DialogTitle>{editingPersonnel ? "Edit Personnel" : "Add New Personnel"}</DialogTitle>
             <DialogDescription>
-              {editingPersonnel
-                ? "Update personnel information"
-                : "Create a new personnel account"}
+              {editingPersonnel ? "Update personnel information" : "Create a new personnel account"}
             </DialogDescription>
           </DialogHeader>
 
@@ -332,9 +371,7 @@ export default function PersonnelPage() {
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
               />
             </div>
@@ -345,44 +382,60 @@ export default function PersonnelPage() {
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 required
               />
             </div>
 
             <div>
-              <Label htmlFor="password">
-                Password {editingPersonnel && "(leave blank to keep current)"}
-              </Label>
+              <Label htmlFor="password">Password {editingPersonnel && "(leave blank to keep current)"}</Label>
               <Input
                 id="password"
                 type="password"
                 value={formData.password}
-                onChange={(e) =>
-                  setFormData({ ...formData, password: e.target.value })
-                }
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                 required={!editingPersonnel}
               />
             </div>
 
             <div>
               <Label htmlFor="role">Role</Label>
-              <Select
-                value={formData.role}
-                onValueChange={(value: any) =>
-                  setFormData({ ...formData, role: value })
-                }
-              >
+              <Select value={formData.role} onValueChange={(value: any) => setFormData({ ...formData, role: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="member">Member</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="member">
+                    <div className="flex items-center gap-2">
+                      {getRoleIcon("member")}
+                      Member (Executor privileges only)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="approver">
+                    <div className="flex items-center gap-2">
+                      {getRoleIcon("approver")}
+                      Approver (Decision-maker)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="entity_admin">
+                    <div className="flex items-center gap-2">
+                      {getRoleIcon("entity_admin")}
+                      Entity Admin (IT Administrator)
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="consumer">
+                    <div className="flex items-center gap-2">
+                      {getRoleIcon("consumer")}
+                      Consumer (Public user)
+                    </div>
+                  </SelectItem>
                   {user?.role === "superadmin" && (
-                    <SelectItem value="superadmin">Super Admin</SelectItem>
+                    <SelectItem value="superadmin">
+                      <div className="flex items-center gap-2">
+                        {getRoleIcon("superadmin")}
+                        Nexus Staff (SuperAdmin)
+                      </div>
+                    </SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -392,9 +445,7 @@ export default function PersonnelPage() {
               <Label htmlFor="entity">Entity</Label>
               <Select
                 value={formData.entityId}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, entityId: value })
-                }
+                onValueChange={(value) => setFormData({ ...formData, entityId: value })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select entity" />
@@ -403,6 +454,7 @@ export default function PersonnelPage() {
                   {entities.map((entity) => (
                     <SelectItem key={entity.id} value={entity.id}>
                       {entity.name}
+                      {entity.name === "Public" && " (For Consumers)"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -410,20 +462,14 @@ export default function PersonnelPage() {
             </div>
 
             <div className="flex justify-end space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsCreateModalOpen(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setIsCreateModalOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit">
-                {editingPersonnel ? "Update" : "Create"}
-              </Button>
+              <Button type="submit">{editingPersonnel ? "Update" : "Create"}</Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
     </div>
-  );
+  )
 }
