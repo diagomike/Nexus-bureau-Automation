@@ -4,7 +4,16 @@ export interface Entity {
   name: string
   parentId: string | null
   managerId: string
+  visibility: "public" | "protected" | "private"
+  tokenId: string // For protected entities
   stampUrl?: string
+  subscriptionExpiry: string
+  paymentDetails?: {
+    provider: "telebirr" | "cbe"
+    receiverName: string
+    receiverAccount: string
+    verified: boolean
+  }
   createdAt: string
 }
 
@@ -13,8 +22,8 @@ export interface Personnel {
   email: string
   password: string
   name: string
-  role: "superadmin" | "manager" | "member"
-  entityId: string
+  role: "superadmin" | "entity_admin" | "approver" | "consumer"
+  entityId?: string // Optional for consumers
   signatureUrl?: string
   createdAt: string
 }
@@ -25,28 +34,57 @@ export interface WorkflowTemplate {
   description: string
   entityId: string
   createdBy: string
-  milestones: Milestone[]
+  milestones: (Milestone | PaymentMilestone)[]
   executioner: {
-    type: "personnel" | "entity"
-    id: string
+    type: "personnel" | "entity" | "public"
+    id?: string // Optional when type is "public"
   }
   archived?: boolean
+  usageLimit?: number
+  usageCount: number
   createdAt: string
 }
 
 export interface Milestone {
   id: string
+  type: "standard"
   title: string
   approvingEntityId: string
+  approvingType: "entity" | "owner" // New: allows self-approval
   requirements: string[]
   placeholderFields: PlaceholderField[]
+  order: number
+}
+
+export interface PaymentMilestone {
+  id: string
+  type: "payment"
+  title: string
+  paymentProvider: "telebirr" | "cbe"
+  requiredAmount: number
+  receiverName: string
+  receiverAccount: string
+  requirements: string[]
   order: number
 }
 
 export interface PlaceholderField {
   id: string
   label: string
-  type: "text" | "textarea" | "number" | "email" | "date" | "select" | "multiselect" | "checkbox" | "radio" | "boolean"
+  type:
+    | "text"
+    | "textarea"
+    | "number"
+    | "email"
+    | "date"
+    | "select"
+    | "multiselect"
+    | "checkbox"
+    | "radio"
+    | "boolean"
+    | "file"
+    | "telebirr_verification"
+    | "cbe_verification"
   required: boolean
   options?: string[] // For select, multiselect, radio
   placeholder?: string
@@ -54,6 +92,8 @@ export interface PlaceholderField {
     min?: number
     max?: number
     pattern?: string
+    maxFileSize?: number // For file uploads (in MB)
+    allowedFileTypes?: string[] // For file uploads
   }
 }
 
@@ -62,19 +102,30 @@ export interface WorkflowInstance {
   templateId: string
   title: string
   ownerId: string
-  status: "active" | "completed"
+  status: "active" | "completed" | "rejected"
   currentMilestoneIndex: number
-  milestoneData: MilestoneData[]
+  milestoneData: (MilestoneData | PaymentMilestoneData)[]
   createdAt: string
   completedAt?: string
 }
 
 export interface MilestoneData {
   milestoneId: string
-  status: "pending" | "active" | "approved"
+  type: "standard"
+  status: "pending" | "active" | "approved" | "rejected"
   approverId?: string
   approvedAt?: string
-  fieldValues: Record<string, string>
+  fieldValues: Record<string, any>
+  rejectionReason?: string
+}
+
+export interface PaymentMilestoneData {
+  milestoneId: string
+  type: "payment"
+  status: "pending" | "active" | "verified" | "failed"
+  verificationData?: any
+  verifiedAt?: string
+  paymentReference?: string
 }
 
 class StorageService {
@@ -96,16 +147,22 @@ class StorageService {
     return Date.now().toString(36) + Math.random().toString(36).substr(2)
   }
 
+  private generateTokenId(): string {
+    return Math.random().toString(36).substr(2, 9).toUpperCase()
+  }
+
   // Entity operations
   getEntities(): Entity[] {
     return this.getAll<Entity>("entities")
   }
 
-  createEntity(entity: Omit<Entity, "id" | "createdAt">): Entity {
+  createEntity(entity: Omit<Entity, "id" | "createdAt" | "tokenId" | "subscriptionExpiry" | "usageCount">): Entity {
     const entities = this.getEntities()
     const newEntity: Entity = {
       ...entity,
       id: this.generateId(),
+      tokenId: this.generateTokenId(),
+      subscriptionExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days free trial
       createdAt: new Date().toISOString(),
     }
     entities.push(newEntity)
@@ -134,6 +191,10 @@ class StorageService {
 
   getEntityById(id: string): Entity | null {
     return this.getEntities().find((e) => e.id === id) || null
+  }
+
+  getEntityByTokenId(tokenId: string): Entity | null {
+    return this.getEntities().find((e) => e.tokenId === tokenId) || null
   }
 
   getSubEntities(parentId: string): Entity[] {
@@ -176,15 +237,54 @@ class StorageService {
     return ancestors
   }
 
+  // Get public entities for consumer search
+  getPublicEntities(): Entity[] {
+    return this.getEntities().filter((e) => e.visibility === "public")
+  }
+
+  // Search entities based on user role and visibility
+  searchEntities(query: string, userRole: string, userEntityId?: string): Entity[] {
+    let entities = this.getEntities()
+
+    // Filter by visibility based on user role
+    if (userRole === "consumer") {
+      entities = entities.filter((e) => e.visibility === "public")
+    } else if (userRole === "entity_admin" || userRole === "approver") {
+      // Can see their own entity hierarchy + public entities
+      const userEntity = userEntityId ? this.getEntityById(userEntityId) : null
+      if (userEntity) {
+        const hierarchy = [
+          userEntity,
+          ...this.getDescendantEntities(userEntityId!),
+          ...this.getAncestorEntities(userEntityId!),
+        ]
+        const hierarchyIds = hierarchy.map((e) => e.id)
+        entities = entities.filter((e) => e.visibility === "public" || hierarchyIds.includes(e.id))
+      }
+    }
+    // SuperAdmin can see all entities
+
+    if (!query.trim()) return entities
+
+    const searchTerm = query.toLowerCase()
+    return entities.filter((entity) => entity.name.toLowerCase().includes(searchTerm))
+  }
+
   // Check if user can access workflow based on executioner assignment
   canUserAccessWorkflow(userId: string, template: WorkflowTemplate): boolean {
     const user = this.getPersonnelById(userId)
     if (!user) return false
 
+    // Public workflows are accessible to all consumers
+    if (template.executioner.type === "public") {
+      return user.role === "consumer" || user.role === "approver"
+    }
+
     if (template.executioner.type === "personnel") {
       return template.executioner.id === userId
     } else if (template.executioner.type === "entity") {
-      // Check if user belongs to the executioner entity or its descendants
+      if (!user.entityId) return false
+
       const userEntity = this.getEntityById(user.entityId)
       if (!userEntity) return false
 
@@ -201,7 +301,20 @@ class StorageService {
   // Get accessible workflows for a user
   getAccessibleWorkflowTemplates(userId: string): WorkflowTemplate[] {
     const allTemplates = this.getWorkflowTemplates().filter((t) => !t.archived)
-    return allTemplates.filter((template) => this.canUserAccessWorkflow(userId, template))
+    return allTemplates.filter((template) => {
+      // Check usage limit
+      if (template.usageLimit && template.usageCount >= template.usageLimit) {
+        return false
+      }
+      return this.canUserAccessWorkflow(userId, template)
+    })
+  }
+
+  // Get public workflows for consumers
+  getPublicWorkflowTemplates(): WorkflowTemplate[] {
+    return this.getWorkflowTemplates().filter(
+      (t) => !t.archived && t.executioner.type === "public" && (!t.usageLimit || t.usageCount < t.usageLimit),
+    )
   }
 
   // Get personnel within entity hierarchy
@@ -212,16 +325,15 @@ class StorageService {
     const descendants = this.getDescendantEntities(entityId)
     const entityIds = [entityId, ...descendants.map((e) => e.id)]
 
-    return this.getPersonnel().filter((p) => entityIds.includes(p.entityId))
+    return this.getPersonnel().filter((p) => p.entityId && entityIds.includes(p.entityId))
   }
 
-  // Add this method to the StorageService class
-  searchEntities(query: string): Entity[] {
-    const entities = this.getEntities()
-    if (!query.trim()) return entities
+  // Check if entity subscription is expired
+  isEntitySubscriptionExpired(entityId: string): boolean {
+    const entity = this.getEntityById(entityId)
+    if (!entity) return true
 
-    const searchTerm = query.toLowerCase()
-    return entities.filter((entity) => entity.name.toLowerCase().includes(searchTerm))
+    return new Date(entity.subscriptionExpiry) < new Date()
   }
 
   // Personnel operations
@@ -277,11 +389,12 @@ class StorageService {
     return this.getAll<WorkflowTemplate>("workflow_templates")
   }
 
-  createWorkflowTemplate(template: Omit<WorkflowTemplate, "id" | "createdAt">): WorkflowTemplate {
+  createWorkflowTemplate(template: Omit<WorkflowTemplate, "id" | "createdAt" | "usageCount">): WorkflowTemplate {
     const templates = this.getWorkflowTemplates()
     const newTemplate: WorkflowTemplate = {
       ...template,
       id: this.generateId(),
+      usageCount: 0,
       createdAt: new Date().toISOString(),
     }
     templates.push(newTemplate)
@@ -316,6 +429,14 @@ class StorageService {
     return this.getWorkflowTemplates().filter((t) => t.entityId === entityId && !t.archived)
   }
 
+  // Increment usage count when workflow is started
+  incrementWorkflowUsage(templateId: string): void {
+    const template = this.getWorkflowTemplateById(templateId)
+    if (template) {
+      this.updateWorkflowTemplate(templateId, { usageCount: template.usageCount + 1 })
+    }
+  }
+
   // Workflow Instance operations
   getWorkflowInstances(): WorkflowInstance[] {
     return this.getAll<WorkflowInstance>("workflow_instances")
@@ -330,6 +451,10 @@ class StorageService {
     }
     instances.push(newInstance)
     this.save("workflow_instances", instances)
+
+    // Increment usage count
+    this.incrementWorkflowUsage(instance.templateId)
+
     return newInstance
   }
 
@@ -361,10 +486,17 @@ class StorageService {
       if (!template) return false
 
       const currentMilestone = template.milestones[instance.currentMilestoneIndex]
-      if (!currentMilestone) return false
+      if (!currentMilestone || currentMilestone.type === "payment") return false
+
+      const standardMilestone = currentMilestone as Milestone
+
+      // Check for owner approval
+      if (standardMilestone.approvingType === "owner") {
+        return instance.ownerId === personnelId
+      }
 
       // Check if this personnel's entity matches the approving entity
-      return currentMilestone.approvingEntityId === personnel.entityId
+      return personnel.entityId && standardMilestone.approvingEntityId === personnel.entityId
     })
   }
 
@@ -377,15 +509,17 @@ class StorageService {
       name: "Government of Example",
       parentId: null,
       managerId: "temp",
+      visibility: "public",
     })
 
     const healthMinistry = this.createEntity({
       name: "Ministry of Health",
       parentId: govEntity.id,
       managerId: "temp",
+      visibility: "public",
     })
 
-    // Create SuperAdmin
+    // Create SuperAdmin (Nexus Staff)
     const superAdmin = this.createPersonnel({
       email: "admin@nexus.gov",
       password: "admin123",
@@ -394,33 +528,42 @@ class StorageService {
       entityId: govEntity.id,
     })
 
-    // Create Health Ministry Manager
-    const healthManager = this.createPersonnel({
-      email: "health.manager@nexus.gov",
-      password: "manager123",
-      name: "Dr. Sarah Johnson",
-      role: "manager",
+    // Create Entity Admin
+    const entityAdmin = this.createPersonnel({
+      email: "admin@health.gov",
+      password: "admin123",
+      name: "Health IT Administrator",
+      role: "entity_admin",
       entityId: healthMinistry.id,
+    })
+
+    // Create Approver
+    const approver = this.createPersonnel({
+      email: "minister@health.gov",
+      password: "minister123",
+      name: "Dr. Sarah Johnson - Health Minister",
+      role: "approver",
+      entityId: healthMinistry.id,
+    })
+
+    // Create Consumer
+    this.createPersonnel({
+      email: "john.doe@gmail.com",
+      password: "user123",
+      name: "John Doe",
+      role: "consumer",
     })
 
     // Update entity manager IDs
     this.updateEntity(govEntity.id, { managerId: superAdmin.id })
-    this.updateEntity(healthMinistry.id, { managerId: healthManager.id })
+    this.updateEntity(healthMinistry.id, { managerId: entityAdmin.id })
 
     // Create regional health office
     const regionalHealth = this.createEntity({
       name: "Regional Health Office - North",
       parentId: healthMinistry.id,
-      managerId: healthManager.id,
-    })
-
-    // Create member personnel
-    this.createPersonnel({
-      email: "john.doe@nexus.gov",
-      password: "user123",
-      name: "John Doe",
-      role: "member",
-      entityId: regionalHealth.id,
+      managerId: entityAdmin.id,
+      visibility: "protected",
     })
 
     // Create IT Department
@@ -428,14 +571,7 @@ class StorageService {
       name: "IT Department",
       parentId: govEntity.id,
       managerId: superAdmin.id,
-    })
-
-    this.createPersonnel({
-      email: "it.admin@nexus.gov",
-      password: "it123",
-      name: "Mike Wilson",
-      role: "member",
-      entityId: itDept.id,
+      visibility: "private",
     })
   }
 }
